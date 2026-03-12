@@ -222,7 +222,8 @@ class _ToiletsScreenState extends State<ToiletsScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF1A6EBF),
         foregroundColor: Colors.white,
-        title: const Text('Accessible Toilets', style: TextStyle(fontWeight: FontWeight.w700)),
+        title: const Text('Accessible Toilets', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20)),
+centerTitle: true,
         actions: [
           // Map/List toggle
           IconButton(

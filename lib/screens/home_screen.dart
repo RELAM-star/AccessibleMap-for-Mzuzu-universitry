@@ -40,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await _assistant.init();
     // Welcome message on open
     await Future.delayed(const Duration(milliseconds: 1000));
-    await _assistant.speak('Welcome to AccessMap, $_firstName. Tap the microphone button and tell me what you need. Say help for a list of commands.');
+    await _assistant.speak('Welcome to AccessMap for Mzuzu university, $_firstName. Tap the microphone button and tell me what you need. Say help for a list of commands.');
   }
 
   final List<Map<String, dynamic>> _categories = [
