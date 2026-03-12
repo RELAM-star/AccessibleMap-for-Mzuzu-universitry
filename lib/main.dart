@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:accessmap_mzuni/screens/login_screen.dart';
-import 'theme/app_theme.dart';
+import 'package:accessmap_mzuni/screens/splash_screen.dart';
+import 'package:accessmap_mzuni/theme/app_theme.dart';
 
 void main() {
-  runApp(const AccessMapApp());
+  runApp(AccessMapApp());
 }
 
 class AccessMapApp extends StatelessWidget {
@@ -15,7 +15,7 @@ class AccessMapApp extends StatelessWidget {
       title: 'AccessMap Mzuni',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: LoginScreen(),
+      home: SplashScreen(),
     );
   }
 }
