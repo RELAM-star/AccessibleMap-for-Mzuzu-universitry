@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 import 'map_screen.dart';
 import 'toilets_screen.dart';
+import 'report_screen.dart';
+import 'profile_screen.dart';
 import '../services/auth_service.dart';
 import '../services/voice_assistant_service.dart';
 import '../widgets/voice_assistant_widget.dart';
@@ -40,24 +42,24 @@ class _HomeScreenState extends State<HomeScreen> {
     await _assistant.init();
     // Welcome message on open
     await Future.delayed(const Duration(milliseconds: 1000));
-    await _assistant.speak('Welcome to AccessMap for Mzuzu university, $_firstName. Tap the microphone button and tell me what you need. Say help for a list of commands.');
+    await _assistant.speak('Welcome to AccessMap, $_firstName. Tap the microphone button and tell me what you need. Say help for a list of commands.');
   }
 
   final List<Map<String, dynamic>> _categories = [
     {'title': 'Campus Map', 'color': Color(0xFF57CC99)},
-    {'title': 'Toilets',    'color': Color(0xFF7B8FF7)},
-    {'title': 'Emergency',  'color': Color(0xFFF4A261)},
-    {'title': 'Bus Times',  'color': Color(0xFFE76F6F)},
+    {'title': 'Toilets',    'color': Color.fromARGB(255, 64, 68, 88)},
+    {'title': 'Report',     'color': Color(0xFFF4A261)},
+    {'title': 'Nearby Buildings',  'color': Color(0xFFE76F6F)},
     {'title': 'Rooms',      'color': Color(0xFF74C0E8)},
   ];
 
   final List<Map<String, dynamic>> _features = [
     {'title': 'Campus Map',         'icon': Icons.map,            'color': Color(0xFFB8C9F5), 'ready': true},
     {'title': 'Accessible Toilets', 'icon': Icons.wc,             'color': Color(0xFF57CC99), 'ready': true},
-    {'title': 'Emergency Help',     'icon': Icons.emergency,      'color': Color(0xFFF4A261), 'ready': false},
-    {'title': 'Bus Schedule',       'icon': Icons.directions_bus, 'color': Color(0xFFE76F6F), 'ready': false},
+    {'title': 'Report Problem',      'icon': Icons.report_problem, 'color': Color(0xFFF4A261), 'ready': true},
+    {'title': 'Nearby Buildings',       'icon': Icons.location_city, 'color': Color(0xFFE76F6F), 'ready': false},
     {'title': 'Study Rooms',        'icon': Icons.menu_book,      'color': Color(0xFF74C0E8), 'ready': false},
-    {'title': 'My Profile',         'icon': Icons.person,         'color': Color(0xFFD4A8F0), 'ready': false},
+    {'title': 'My Profile',         'icon': Icons.person,         'color': Color(0xFFD4A8F0), 'ready': true},
   ];
 
   void _openMap() => Navigator.push(context, MaterialPageRoute(builder: (_) => const MapScreen()));
@@ -70,6 +72,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (f['title'] == 'Campus Map') _openMap();
     if (f['title'] == 'Accessible Toilets') _openToilets();
+    if (f['title'] == 'Report Problem') Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportScreen()));
+    if (f['title'] == 'My Profile') Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
   }
 
   @override
@@ -196,7 +200,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisCount: 2,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 12,
-                  childAspectRatio: 1.15,
+                  childAspectRatio: 1.6,
                 ),
                 itemCount: _features.length,
                 itemBuilder: (_, i) {
@@ -212,13 +216,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         boxShadow: ready ? [BoxShadow(color: color.withOpacity(0.4), blurRadius: 12, offset: const Offset(0, 5))] : [],
                       ),
                       child: Stack(children: [
-                        Positioned(top: -16, right: -16, child: Container(width: 70, height: 70, decoration: BoxDecoration(color: Colors.white.withOpacity(0.12), shape: BoxShape.circle))),
-                        Padding(
-                          padding: const EdgeInsets.all(18),
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.end, children: [
-                            Icon(f['icon'] as IconData, color: Colors.white, size: 30),
+                        Positioned(top: -16, right: -16, child: Container(width: 60, height: 60, decoration: BoxDecoration(color: Colors.white.withOpacity(0.12), shape: BoxShape.circle))),
+                        Center(
+                          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Icon(f['icon'] as IconData, color: Colors.white, size: 28),
                             const SizedBox(height: 8),
-                            Text(f['title'] as String, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13, height: 1.2)),
+                            Text(f['title'] as String, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13, height: 1.2), textAlign: TextAlign.center),
                             if (!ready) Text('Coming Soon', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)),
                           ]),
                         ),

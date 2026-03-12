@@ -220,10 +220,9 @@ class _ToiletsScreenState extends State<ToiletsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1A6EBF),
+        backgroundColor: const Color(0xFF135C52),
         foregroundColor: Colors.white,
-        title: const Text('Accessible Toilets', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20)),
-centerTitle: true,
+        title: const Text('Accessible Toilets', style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
           // Map/List toggle
           IconButton(
@@ -475,7 +474,7 @@ centerTitle: true,
                 onPressed: () => _speak('Directions to ${t.name}. ${t.directions}'),
                 icon: const Icon(Icons.volume_up, size: 18),
                 label: const Text('Hear Directions'),
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A6EBF), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF135C52), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               ),
             ),
             const SizedBox(width: 10),

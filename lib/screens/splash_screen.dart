@@ -54,10 +54,10 @@ class _SplashScreenState extends State<SplashScreen>
                     Container(
                       width: 110, height: 110,
                       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 24, offset: const Offset(0, 8))]),
-                      child: const Icon(Icons.accessible_forward_rounded, size: 64, color: Color(0xFF1A7A6E)),
+                      child: CustomPaint(size: const Size(64, 64), painter: _WhiteCanePainter()),
                     ),
                     const SizedBox(height: 28),
-                    const Text('AccessMap', style: TextStyle(fontSize: 38, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1)),
+                    const Text('AccessMap:Smart Map for the blind', style: TextStyle(fontSize: 38, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1)),
                     const SizedBox(height: 6),
                     Text('Mzuzu University', style: TextStyle(fontSize: 16, color: Colors.white.withOpacity(0.78), letterSpacing: 0.5)),
                     const SizedBox(height: 56),
@@ -70,5 +70,56 @@ class _SplashScreenState extends State<SplashScreen>
         ],
       ),
     );
+  }
 }
-    }
+
+class _WhiteCanePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF1A7A6E)
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.fill;
+
+    final stroke = Paint()
+      ..color = const Color(0xFF1A7A6E)
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = size.width * 0.09
+      ..style = PaintingStyle.stroke;
+
+    final w = size.width;
+    final h = size.height;
+
+    // Head
+    canvas.drawCircle(Offset(w * 0.42, h * 0.12), w * 0.1, paint);
+
+    // Body
+    canvas.drawLine(Offset(w * 0.42, h * 0.23), Offset(w * 0.42, h * 0.55), stroke);
+
+    // Left arm
+    canvas.drawLine(Offset(w * 0.42, h * 0.35), Offset(w * 0.20, h * 0.48), stroke);
+
+    // Right arm (holding cane)
+    canvas.drawLine(Offset(w * 0.42, h * 0.35), Offset(w * 0.60, h * 0.44), stroke);
+
+    // Left leg
+    canvas.drawLine(Offset(w * 0.42, h * 0.55), Offset(w * 0.28, h * 0.76), stroke);
+
+    // Right leg
+    canvas.drawLine(Offset(w * 0.42, h * 0.55), Offset(w * 0.52, h * 0.76), stroke);
+
+    // White cane — long diagonal from hand to floor
+    final canePaint = Paint()
+      ..color = const Color(0xFF1A7A6E)
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = size.width * 0.06
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(Offset(w * 0.60, h * 0.44), Offset(w * 0.82, h * 0.92), canePaint);
+
+    // Cane tip
+    canvas.drawCircle(Offset(w * 0.82, h * 0.93), w * 0.05, paint);
+  }
+
+  @override
+  bool shouldRepaint(_WhiteCanePainter oldDelegate) => false;
+}
