@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:accessmap_mzuni/screens/login_screen.dart';
+import 'package:accessmap_mzuni/screens/home_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -17,13 +17,19 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500));
-    _fadeAnim = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
-    _scaleAnim = Tween<double>(begin: 0.7, end: 1).animate(CurvedAnimation(parent: _controller, curve: Curves.elasticOut));
+    _controller = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1500));
+    _fadeAnim = Tween<double>(begin: 0, end: 1).animate(
+        CurvedAnimation(parent: _controller, curve: Curves.easeIn));
+    _scaleAnim = Tween<double>(begin: 0.7, end: 1).animate(
+        CurvedAnimation(parent: _controller, curve: Curves.elasticOut));
     _controller.forward();
     Future.delayed(const Duration(milliseconds: 2500), () {
       if (!mounted) return;
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen()));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+      );
     });
   }
 
@@ -53,15 +59,40 @@ class _SplashScreenState extends State<SplashScreen>
                   children: [
                     Container(
                       width: 110, height: 110,
-                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 24, offset: const Offset(0, 8))]),
-                      child: CustomPaint(size: const Size(64, 64), painter: _WhiteCanePainter()),
+                      decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(28),
+                          boxShadow: [BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 24,
+                              offset: const Offset(0, 8))]),
+                      child: CustomPaint(
+                          size: const Size(64, 64),
+                          painter: _WhiteCanePainter()),
                     ),
                     const SizedBox(height: 28),
-                    const Text('AccessMap:Smart Map for the blind', style: TextStyle(fontSize: 38, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1)),
+                    const Text(
+                      'AccessMap: Smart App for the Blind',
+                      style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          letterSpacing: 1),
+                      textAlign: TextAlign.center,
+                    ),
                     const SizedBox(height: 6),
-                    Text('Mzuzu University', style: TextStyle(fontSize: 16, color: Colors.white.withOpacity(0.78), letterSpacing: 0.5)),
+                    Text('Mzuzu University',
+                        style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.white.withOpacity(0.78),
+                            letterSpacing: 0.5)),
                     const SizedBox(height: 56),
-                    SizedBox(width: 28, height: 28, child: CircularProgressIndicator(color: Colors.white.withOpacity(0.8), strokeWidth: 2.5)),
+                    SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(
+                            color: Colors.white.withOpacity(0.8),
+                            strokeWidth: 2.5)),
                   ],
                 ),
               ),
@@ -90,33 +121,19 @@ class _WhiteCanePainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
 
-    // Head
     canvas.drawCircle(Offset(w * 0.42, h * 0.12), w * 0.1, paint);
-
-    // Body
     canvas.drawLine(Offset(w * 0.42, h * 0.23), Offset(w * 0.42, h * 0.55), stroke);
-
-    // Left arm
     canvas.drawLine(Offset(w * 0.42, h * 0.35), Offset(w * 0.20, h * 0.48), stroke);
-
-    // Right arm (holding cane)
     canvas.drawLine(Offset(w * 0.42, h * 0.35), Offset(w * 0.60, h * 0.44), stroke);
-
-    // Left leg
     canvas.drawLine(Offset(w * 0.42, h * 0.55), Offset(w * 0.28, h * 0.76), stroke);
-
-    // Right leg
     canvas.drawLine(Offset(w * 0.42, h * 0.55), Offset(w * 0.52, h * 0.76), stroke);
 
-    // White cane — long diagonal from hand to floor
     final canePaint = Paint()
       ..color = const Color(0xFF1A7A6E)
       ..strokeCap = StrokeCap.round
       ..strokeWidth = size.width * 0.06
       ..style = PaintingStyle.stroke;
     canvas.drawLine(Offset(w * 0.60, h * 0.44), Offset(w * 0.82, h * 0.92), canePaint);
-
-    // Cane tip
     canvas.drawCircle(Offset(w * 0.82, h * 0.93), w * 0.05, paint);
   }
 
