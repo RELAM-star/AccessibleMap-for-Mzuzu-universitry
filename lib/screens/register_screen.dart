@@ -1,7 +1,8 @@
 // lib/screens/register_screen.dart
 
 import 'package:flutter/material.dart';
-import 'home_screen.dart';
+import 'package:accessmap_mzuni/screens/home_screen.dart';
+import 'package:accessmap_mzuni/services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -10,6 +11,7 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
+  final AuthService _authService = AuthService();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
@@ -18,12 +20,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _loading = false;
   bool _obscure = true;
   bool _obscureConfirm = true;
+  String? _selectedDisability;
+  bool _needsVoice = true;
+  bool _needsWheelchair = false;
 
   Future<void> _register() async {
+    if (_passwordController.text != _confirmController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Passwords do not match'), backgroundColor: Color(0xFFE74C3C)),
+      );
+      return;
+    }
     setState(() => _loading = true);
-    await Future.delayed(const Duration(seconds: 1));
-    if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
+    final error = await _authService.signUp(
+      email: _emailController.text.trim(),
+      password: _passwordController.text.trim(),
+      fullName: _nameController.text.trim(),
+      phone: _phoneController.text.trim(),
+      disabilityType: _selectedDisability ?? 'other',
+      needsVoiceNavigation: _needsVoice,
+      needsWheelchairRoutes: _needsWheelchair,
+      studentId: '',
+      role: 'student',
+    );
     setState(() => _loading = false);
+    if (error != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: const Color(0xFFE74C3C)),
+      );
+      return;
+    }
+    if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
   }
 
   @override

@@ -1,6 +1,7 @@
 // lib/screens/forgot_password_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:accessmap_mzuni/services/auth_service.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -12,11 +13,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _emailController = TextEditingController();
   bool _sent = false;
   bool _loading = false;
+  final AuthService _authService = AuthService();
 
   Future<void> _send() async {
     setState(() => _loading = true);
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() { _loading = false; _sent = true; });
+    final error = await _authService.resetPassword(_emailController.text.trim());
+    setState(() { _loading = false; _sent = error == null; });
+    if (error != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: const Color(0xFFE74C3C)),
+      );
+    }
   }
 
   @override
