@@ -21,6 +21,7 @@ class VoiceAssistantService {
     await _tts.setLanguage('en-US');
     await _tts.setSpeechRate(0.45);
     await _tts.setVolume(1.0);
+    _tts.setErrorHandler((error) {});
     _sttAvailable = await _stt.initialize(
       onStatus: (status) {
         if (status == 'done' || status == 'notListening') {

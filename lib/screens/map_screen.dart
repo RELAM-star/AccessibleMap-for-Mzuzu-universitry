@@ -5,6 +5,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
+import '../services/routing_service.dart';
+import '../services/firestore_service.dart';
 
 enum LocationType { academic, admin, library, hostel, facility, transport }
 
@@ -54,38 +56,97 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   final MapController _mapController = MapController();
   final FlutterTts _tts = FlutterTts();
+  final TextEditingController _searchController = TextEditingController();
   static const LatLng _mzuniCenter = LatLng(-11.4653, 34.0199);
   CampusLocation? _selectedLocation;
   bool _voiceEnabled = true;
   LatLng? _userLocation;
-  final List<CampusLocation> _buildings = CampusLocation.mzuniBuildings;
+  final List<CampusLocation> _localBuildings = CampusLocation.mzuniBuildings;
+  List<CampusLocation> _buildings = [];
+  List<CampusLocation> _filtered = [];
+  bool _isLoadingLocations = true;
 
   @override
   void initState() {
     super.initState();
     _setupTts();
     _getUserLocation();
+    _loadLocations();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  Future<void> _loadLocations() async {
+    try {
+      final service = FirestoreService();
+      final locations = <CampusLocation>[];
+      final fetched = await service.getLocations();
+      if (fetched.isNotEmpty) {
+        locations.addAll(fetched);
+      }
+      if (mounted) {
+        setState(() {
+          _buildings = locations.isNotEmpty ? locations : _localBuildings;
+          _filtered = List.from(_buildings);
+          _isLoadingLocations = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _buildings = _localBuildings;
+          _filtered = List.from(_buildings);
+          _isLoadingLocations = false;
+        });
+      }
+    }
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.trim().toLowerCase();
+    setState(() {
+      _filtered = query.isEmpty
+          ? List.from(_buildings)
+          : _buildings.where((b) => b.name.toLowerCase().contains(query) || b.description.toLowerCase().contains(query)).toList();
+    });
   }
 
   Future<void> _setupTts() async {
     await _tts.setLanguage('en-US');
     await _tts.setSpeechRate(0.45);
     await _tts.setVolume(1.0);
+    _tts.setErrorHandler((error) {});
   }
 
   Future<void> _getUserLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
+      if (!serviceEnabled) {
+        if (mounted) _showError('Location services are disabled. Enable them in settings.');
+        return;
+      }
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) return;
+        if (permission == LocationPermission.denied) {
+          if (mounted) _showError('Location permission denied.');
+          return;
+        }
       }
-      if (permission == LocationPermission.deniedForever) return;
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) _showError('Location permission permanently denied. Enable it in settings.');
+        return;
+      }
       Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       if (mounted) setState(() => _userLocation = LatLng(position.latitude, position.longitude));
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) _showError('Failed to get location: $e');
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: const Color(0xFFE74C3C)),
+    );
   }
 
   Future<void> _onLocationTapped(CampusLocation location) async {
@@ -112,10 +173,12 @@ class _MapScreenState extends State<MapScreen> {
       await _tts.speak('Your location is not available. Please enable location access.');
       return;
     }
-    double distance = Geolocator.distanceBetween(_userLocation!.latitude, _userLocation!.longitude, loc.coordinates.latitude, loc.coordinates.longitude);
-    String dir = _getDirection(_userLocation!, loc.coordinates);
-    String distText = distance < 1000 ? '${distance.toStringAsFixed(0)} metres' : '${(distance / 1000).toStringAsFixed(1)} kilometres';
-    await _tts.speak('To reach ${loc.name}, head $dir for $distText. ${loc.accessibilityInfo}');
+    final steps = await RoutingService.getRouteSteps(_userLocation!, loc.coordinates);
+    if (steps == null) {
+      await _tts.speak('Could not calculate directions to ${loc.name} right now.');
+      return;
+    }
+    await _tts.speak('To reach ${loc.name}. $steps. ${loc.accessibilityInfo}');
   }
 
   String _getDirection(LatLng from, LatLng to) {
@@ -220,12 +283,20 @@ class _MapScreenState extends State<MapScreen> {
       ),
       const SizedBox(width: 10),
       Expanded(
-        child: GestureDetector(
-          onTap: _showBuildingsList,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8)]),
-            child: const Row(children: [Icon(Icons.search, color: Color(0xFF1A6EBF), size: 20), SizedBox(width: 8), Text('Search buildings...', style: TextStyle(color: Colors.grey, fontSize: 14))]),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8)]),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search buildings...',
+              hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+              prefixIcon: const Icon(Icons.search, color: Color(0xFF1A6EBF), size: 20),
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: EdgeInsets.zero,
+            ),
+            onChanged: (_) => _showBuildingsList(),
           ),
         ),
       ),
@@ -307,6 +378,8 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _showBuildingsList() {
+    final query = _searchController.text.trim().toLowerCase();
+    final results = query.isEmpty ? _buildings : _filtered;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -315,12 +388,12 @@ class _MapScreenState extends State<MapScreen> {
         expand: false, initialChildSize: 0.6, maxChildSize: 0.9,
         builder: (_, sc) => Column(children: [
           Container(margin: const EdgeInsets.symmetric(vertical: 12), width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
-          const Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Text('Mzuni Buildings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text(query.isEmpty ? 'Mzuni Buildings' : 'Results for "$query"', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
           const SizedBox(height: 10),
           Expanded(child: ListView.builder(
-            controller: sc, itemCount: _buildings.length,
+            controller: sc, itemCount: results.length,
             itemBuilder: (_, i) {
-              final CampusLocation loc = _buildings[i];
+              final CampusLocation loc = results[i];
               return ListTile(
                 leading: Container(width: 42, height: 42, decoration: BoxDecoration(color: _getTypeColor(loc.type).withOpacity(0.12), borderRadius: BorderRadius.circular(10)), child: Icon(_getTypeIcon(loc.type), color: _getTypeColor(loc.type), size: 22)),
                 title: Text(loc.name, style: const TextStyle(fontWeight: FontWeight.w600)),

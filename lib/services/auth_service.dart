@@ -2,10 +2,12 @@
 
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/user_model.dart';
+import 'firestore_service.dart';
 
 class AuthService {
   User? get currentUser => FirebaseAuth.instance.currentUser;
   String? get currentUserId => currentUser?.uid;
+  final FirestoreService _firestore = FirestoreService();
 
   Future<String?> signIn({
     required String email,
@@ -51,6 +53,7 @@ class AuthService {
         createdAt: DateTime.now(),
       );
       await credential.user?.updateDisplayName(fullName);
+      await _firestore.saveUserProfile(user);
       return null;
     } on FirebaseAuthException catch (e) {
       return e.message;
@@ -71,20 +74,7 @@ class AuthService {
   }
 
   Future<UserModel?> getUserProfile(String uid) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return null;
-    return UserModel(
-      uid: user.uid,
-      fullName: user.displayName ?? 'Student',
-      email: user.email ?? '',
-      phone: '',
-      disabilityType: 'blind',
-      needsVoiceNavigation: true,
-      needsWheelchairRoutes: false,
-      studentId: '',
-      role: 'student',
-      createdAt: DateTime.now(),
-    );
+    return _firestore.getUserProfile(uid);
   }
 
   Future<String?> updateProfile(String uid, Map<String, dynamic> data) async {
@@ -93,6 +83,7 @@ class AuthService {
       if (user != null && data['fullName'] != null) {
         await user.updateDisplayName(data['fullName'] as String);
       }
+      await _firestore.updateUserProfile(uid, data);
       return null;
     } on FirebaseAuthException catch (e) {
       return e.message;

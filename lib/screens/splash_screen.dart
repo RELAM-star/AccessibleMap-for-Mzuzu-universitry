@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:accessmap_mzuni/screens/login_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -13,6 +14,7 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _controller;
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleAnim;
+  Timer? _navTimer;
 
   @override
   void initState() {
@@ -21,7 +23,7 @@ class _SplashScreenState extends State<SplashScreen>
     _fadeAnim = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
     _scaleAnim = Tween<double>(begin: 0.7, end: 1).animate(CurvedAnimation(parent: _controller, curve: Curves.elasticOut));
     _controller.forward();
-    Future.delayed(const Duration(milliseconds: 2500), () {
+    _navTimer = Timer(const Duration(milliseconds: 2500), () {
       if (!mounted) return;
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen()));
     });
@@ -29,6 +31,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
+    _navTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }

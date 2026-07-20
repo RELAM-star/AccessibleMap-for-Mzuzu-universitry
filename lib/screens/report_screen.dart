@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/firestore_service.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -13,6 +15,7 @@ class ReportScreen extends StatefulWidget {
 class _ReportScreenState extends State<ReportScreen> {
   final FlutterTts _tts = FlutterTts();
   final SpeechToText _stt = SpeechToText();
+  final FirestoreService _firestore = FirestoreService();
   bool _sttAvailable = false;
 
   // Wizard state
@@ -65,6 +68,7 @@ class _ReportScreenState extends State<ReportScreen> {
     await _tts.setLanguage('en-US');
     await _tts.setSpeechRate(0.42);
     await _tts.setVolume(1.0);
+    _tts.setErrorHandler((error) {});
     _tts.setStartHandler(() => setState(() => _isSpeaking = true));
     _tts.setCompletionHandler(() => setState(() => _isSpeaking = false));
   }
@@ -187,7 +191,24 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Future<void> _doSubmit() async {
     setState(() { _isSubmitting = true; _step = 5; });
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      await _firestore.submitReport({
+        'type': _reportType,
+        'location': _location,
+        'crowdedSpot': _crowdedSpot,
+        'userId': user?.uid ?? 'anonymous',
+      });
+    } catch (e) {
+      await _speak('There was an error submitting your report. Please try again.');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to submit report: $e'), backgroundColor: const Color(0xFFE74C3C)),
+        );
+      }
+      setState(() { _isSubmitting = false; _step = 4; });
+      return;
+    }
     setState(() => _isSubmitting = false);
     await _speak('Your report has been submitted successfully. Thank you for helping other students stay safe on campus.');
   }
