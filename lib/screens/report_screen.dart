@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
+import '../services/report_service.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -13,16 +14,15 @@ class ReportScreen extends StatefulWidget {
 class _ReportScreenState extends State<ReportScreen> {
   final FlutterTts _tts = FlutterTts();
   final SpeechToText _stt = SpeechToText();
+  final ReportService _reportService = ReportService();
   bool _sttAvailable = false;
 
-  // Wizard state
-  int _step = 0; // 0=intro, 1=type, 2=location, 3=crowded spot, 4=confirm, 5=done
+  int _step = 0;
   bool _isListening = false;
   bool _isSpeaking = false;
   bool _isSubmitting = false;
   String _listenedWords = '';
 
-  // Answers
   String? _reportType;
   String? _location;
   String _crowdedSpot = '';
@@ -78,16 +78,24 @@ class _ReportScreenState extends State<ReportScreen> {
     await _tts.stop();
     setState(() => _isSpeaking = true);
     await _tts.speak(text);
-    // Wait for speech to complete
     await Future.doWhile(() async {
       await Future.delayed(const Duration(milliseconds: 200));
       return _isSpeaking;
     });
   }
 
-  Future<void> _listen({required int seconds, required void Function(String) onResult}) async {
-    if (!_sttAvailable) { await _speak('Speech not available. Please tap the option on screen.'); return; }
-    setState(() { _isListening = true; _listenedWords = ''; });
+  Future<void> _listen({
+    required int seconds,
+    required void Function(String) onResult,
+  }) async {
+    if (!_sttAvailable) {
+      await _speak('Speech not available. Please tap the option on screen.');
+      return;
+    }
+    setState(() {
+      _isListening = true;
+      _listenedWords = '';
+    });
     await _stt.listen(
       onResult: (result) {
         setState(() => _listenedWords = result.recognizedWords);
@@ -101,31 +109,22 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  // ─── Wizard flow ─────────────────────────────────────────────────────────────
-
   Future<void> _startWizard() async {
     setState(() => _step = 0);
-    await _speak('Welcome to the report screen. I will guide you through reporting a problem. Tap the big microphone button to answer each question. Are you ready? Tap the button to begin.');
+    await _speak('Welcome to the report screen. Tap the big microphone button to begin.');
   }
 
   Future<void> _askProblemType() async {
     setState(() => _step = 1);
-    await _speak(
-      'Step one. What type of problem are you reporting? '
-      'Say: Blocked Path, Construction Area, Crowded Location, Broken Ramp, Poor Lighting, or Other Hazard.',
-    );
+    await _speak('Step one. What type of problem are you reporting? Say: Blocked Path, Construction Area, Crowded Location, Broken Ramp, Poor Lighting, or Other Hazard.');
     await _listen(seconds: 10, onResult: (words) async {
       String? matched = _matchType(words);
       if (matched != null) {
         setState(() => _reportType = matched);
         await _speak('Got it. You said $matched.');
-        if (matched == 'Crowded Location') {
-          await _askLocation();
-        } else {
-          await _askLocation();
-        }
+        await _askLocation();
       } else {
-        await _speak('I did not catch that. Please try again. Say one of: Blocked Path, Construction, Crowded, Broken Ramp, Lighting, or Other.');
+        await _speak('I did not catch that. Please try again.');
         await _askProblemType();
       }
     });
@@ -133,7 +132,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Future<void> _askLocation() async {
     setState(() => _step = 2);
-    await _speak('Step two. Where is the problem? Say the building name. For example: Library, Admin Block, Student Centre, Cafeteria, or Chapel.');
+    await _speak('Step two. Where is the problem? Say the building name. For example: Library, Admin Block, Student Centre, or Cafeteria.');
     await _listen(seconds: 10, onResult: (words) async {
       String? matched = _matchLocation(words);
       if (matched != null) {
@@ -145,7 +144,7 @@ class _ReportScreenState extends State<ReportScreen> {
           await _askConfirm();
         }
       } else {
-        await _speak('I could not match that to a location on campus. Please try again. Say the building name clearly.');
+        await _speak('I could not match that location. Please try again.');
         await _askLocation();
       }
     });
@@ -153,7 +152,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Future<void> _askCrowdedSpot() async {
     setState(() => _step = 3);
-    await _speak('Step three. Where exactly is it crowded? Describe the spot. For example: near the entrance, in the corridor, at the stairs, or outside the cafeteria.');
+    await _speak('Step three. Where exactly is it crowded? For example: near the entrance, in the corridor, or at the stairs.');
     await _listen(seconds: 10, onResult: (words) async {
       if (words.length > 2) {
         setState(() => _crowdedSpot = words);
@@ -172,10 +171,14 @@ class _ReportScreenState extends State<ReportScreen> {
     if (_crowdedSpot.isNotEmpty) summary += ' Crowded spot: $_crowdedSpot.';
     await _speak('Step four. Here is your report. $summary. Say YES to submit, or say REDO to start over.');
     await _listen(seconds: 8, onResult: (words) async {
-      if (words.contains('yes') || words.contains('submit') || words.contains('confirm') || words.contains('ok')) {
+      if (words.contains('yes') || words.contains('submit') || words.contains('confirm')) {
         await _doSubmit();
-      } else if (words.contains('redo') || words.contains('no') || words.contains('again') || words.contains('start over')) {
-        setState(() { _reportType = null; _location = null; _crowdedSpot = ''; });
+      } else if (words.contains('redo') || words.contains('no') || words.contains('again')) {
+        setState(() {
+          _reportType = null;
+          _location = null;
+          _crowdedSpot = '';
+        });
         await _speak('Starting over.');
         await _askProblemType();
       } else {
@@ -186,13 +189,25 @@ class _ReportScreenState extends State<ReportScreen> {
   }
 
   Future<void> _doSubmit() async {
-    setState(() { _isSubmitting = true; _step = 5; });
-    await Future.delayed(const Duration(seconds: 2));
-    setState(() => _isSubmitting = false);
-    await _speak('Your report has been submitted successfully. Thank you for helping other students stay safe on campus.');
+    setState(() {
+      _isSubmitting = true;
+      _step = 5;
+    });
+    try {
+      await _reportService.submitReport(
+        locationName: _location ?? 'Unknown Location',
+        issueType: _reportType ?? 'Other Hazard',
+        description: _crowdedSpot.isNotEmpty
+            ? _crowdedSpot
+            : _reportType ?? 'No description',
+      );
+      setState(() => _isSubmitting = false);
+      await _speak('Your report has been submitted successfully. Thank you for helping other students stay safe on campus.');
+    } catch (e) {
+      setState(() => _isSubmitting = false);
+      await _speak('Sorry, there was an error submitting your report. Please try again.');
+    }
   }
-
-  // ─── Matching helpers ─────────────────────────────────────────────────────────
 
   String? _matchType(String spoken) {
     for (final r in _reportTypes) {
@@ -211,8 +226,6 @@ class _ReportScreenState extends State<ReportScreen> {
     }
     return null;
   }
-
-  // ─── UI ───────────────────────────────────────────────────────────────────────
 
   Color get _stepColor {
     if (_step == 1) return const Color(0xFFE74C3C);
@@ -260,14 +273,17 @@ class _ReportScreenState extends State<ReportScreen> {
         backgroundColor: const Color(0xFF135C52),
         foregroundColor: Colors.white,
         centerTitle: true,
-        title: const Text('Report a Problem', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20)),
+        title: const Text('Report a Problem',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20)),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), tooltip: 'Restart', onPressed: _startWizard),
+          IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Restart',
+              onPressed: _startWizard),
         ],
       ),
       body: Column(
         children: [
-          // Progress bar
           if (_step > 0 && _step < 5)
             LinearProgressIndicator(
               value: _step / 4,
@@ -275,7 +291,6 @@ class _ReportScreenState extends State<ReportScreen> {
               valueColor: AlwaysStoppedAnimation(_stepColor),
               minHeight: 5,
             ),
-
           Expanded(
             child: _step == 5 ? _buildDoneScreen() : _buildWizardScreen(),
           ),
@@ -290,63 +305,79 @@ class _ReportScreenState extends State<ReportScreen> {
       child: Column(
         children: [
           const SizedBox(height: 16),
-
-          // Step icon
           AnimatedContainer(
             duration: const Duration(milliseconds: 300),
-            width: 90, height: 90,
-            decoration: BoxDecoration(color: _stepColor.withOpacity(0.12), shape: BoxShape.circle),
+            width: 90,
+            height: 90,
+            decoration: BoxDecoration(
+                color: _stepColor.withOpacity(0.12), shape: BoxShape.circle),
             child: Icon(_stepIcon, color: _stepColor, size: 44),
           ),
           const SizedBox(height: 20),
-
-          // Step title
-          Text(_stepTitle, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF1A3C38)), textAlign: TextAlign.center),
+          Text(_stepTitle,
+              style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1A3C38)),
+              textAlign: TextAlign.center),
           const SizedBox(height: 10),
-
-          // Hint text
-          Text(_stepHint, style: const TextStyle(fontSize: 14, color: Colors.grey, height: 1.6), textAlign: TextAlign.center),
+          Text(_stepHint,
+              style: const TextStyle(
+                  fontSize: 14, color: Colors.grey, height: 1.6),
+              textAlign: TextAlign.center),
           const SizedBox(height: 24),
-
-          // Speaking indicator
           if (_isSpeaking)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(color: const Color(0xFF135C52).withOpacity(0.08), borderRadius: BorderRadius.circular(30)),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.graphic_eq, color: Color(0xFF135C52), size: 18),
-                const SizedBox(width: 8),
-                const Text('Speaking...', style: TextStyle(color: Color(0xFF135C52), fontWeight: FontWeight.w600)),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              decoration: BoxDecoration(
+                  color: const Color(0xFF135C52).withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(30)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: const [
+                Icon(Icons.graphic_eq, color: Color(0xFF135C52), size: 18),
+                SizedBox(width: 8),
+                Text('Speaking...',
+                    style: TextStyle(
+                        color: Color(0xFF135C52),
+                        fontWeight: FontWeight.w600)),
               ]),
             ),
-
-          // Listening indicator + heard words
           if (_isListening) ...[
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(color: const Color(0xFFE74C3C).withOpacity(0.08), borderRadius: BorderRadius.circular(30)),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.mic, color: Color(0xFFE74C3C), size: 18),
-                const SizedBox(width: 8),
-                const Text('Listening...', style: TextStyle(color: Color(0xFFE74C3C), fontWeight: FontWeight.w600)),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              decoration: BoxDecoration(
+                  color: const Color(0xFFE74C3C).withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(30)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: const [
+                Icon(Icons.mic, color: Color(0xFFE74C3C), size: 18),
+                SizedBox(width: 8),
+                Text('Listening...',
+                    style: TextStyle(
+                        color: Color(0xFFE74C3C),
+                        fontWeight: FontWeight.w600)),
               ]),
             ),
             if (_listenedWords.isNotEmpty) ...[
               const SizedBox(height: 10),
-              Text('"$_listenedWords"', style: const TextStyle(fontSize: 16, fontStyle: FontStyle.italic, color: Color(0xFF1A3C38))),
+              Text('"$_listenedWords"',
+                  style: const TextStyle(
+                      fontSize: 16,
+                      fontStyle: FontStyle.italic,
+                      color: Color(0xFF1A3C38))),
             ],
           ],
-
           const SizedBox(height: 30),
-
-          // Summary cards (show what's been collected)
-          if (_reportType != null) _summaryCard(Icons.report_problem, 'Problem', _reportType!, const Color(0xFFE74C3C)),
-          if (_location != null) _summaryCard(Icons.location_on, 'Location', _location!, const Color(0xFF135C52)),
-          if (_crowdedSpot.isNotEmpty) _summaryCard(Icons.people, 'Crowded Spot', _crowdedSpot, const Color(0xFF7B8FF7)),
-
+          if (_reportType != null)
+            _summaryCard(Icons.report_problem, 'Problem', _reportType!,
+                const Color(0xFFE74C3C)),
+          if (_location != null)
+            _summaryCard(Icons.location_on, 'Location', _location!,
+                const Color(0xFF135C52)),
+          if (_crowdedSpot.isNotEmpty)
+            _summaryCard(Icons.people, 'Crowded Spot', _crowdedSpot,
+                const Color(0xFF7B8FF7)),
           const SizedBox(height: 30),
-
-          // BIG MIC / ACTION button
           if (!_isListening && !_isSpeaking) ...[
             GestureDetector(
               onTap: () {
@@ -357,26 +388,36 @@ class _ReportScreenState extends State<ReportScreen> {
                 else if (_step == 4) _askConfirm();
               },
               child: Container(
-                width: 100, height: 100,
+                width: 100,
+                height: 100,
                 decoration: BoxDecoration(
                   color: _stepColor,
                   shape: BoxShape.circle,
-                  boxShadow: [BoxShadow(color: _stepColor.withOpacity(0.4), blurRadius: 20, spreadRadius: 4)],
+                  boxShadow: [
+                    BoxShadow(
+                        color: _stepColor.withOpacity(0.4),
+                        blurRadius: 20,
+                        spreadRadius: 4)
+                  ],
                 ),
                 child: const Icon(Icons.mic, color: Colors.white, size: 48),
               ),
             ),
             const SizedBox(height: 14),
-            Text(_step == 0 ? 'Tap to Begin' : 'Tap to Answer', style: TextStyle(color: _stepColor, fontWeight: FontWeight.w700, fontSize: 14)),
+            Text(_step == 0 ? 'Tap to Begin' : 'Tap to Answer',
+                style: TextStyle(
+                    color: _stepColor,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14)),
           ],
-
-          // Manual type options (step 1 visual fallback)
           if (_step == 1 && !_isListening && !_isSpeaking) ...[
             const SizedBox(height: 24),
-            const Text('— or tap a type below —', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            const Text('— or tap a type below —',
+                style: TextStyle(color: Colors.grey, fontSize: 12)),
             const SizedBox(height: 12),
             Wrap(
-              spacing: 10, runSpacing: 10,
+              spacing: 10,
+              runSpacing: 10,
               children: _reportTypes.map((r) {
                 bool sel = _reportType == r['type'];
                 Color c = r['color'] as Color;
@@ -387,26 +428,35 @@ class _ReportScreenState extends State<ReportScreen> {
                     await _askLocation();
                   },
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(color: sel ? c : c.withOpacity(0.1), borderRadius: BorderRadius.circular(30), border: Border.all(color: c.withOpacity(0.4))),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                        color: sel ? c : c.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(color: c.withOpacity(0.4))),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(r['icon'] as IconData, color: sel ? Colors.white : c, size: 16),
+                      Icon(r['icon'] as IconData,
+                          color: sel ? Colors.white : c, size: 16),
                       const SizedBox(width: 6),
-                      Text(r['type'] as String, style: TextStyle(color: sel ? Colors.white : c, fontWeight: FontWeight.w700, fontSize: 12)),
+                      Text(r['type'] as String,
+                          style: TextStyle(
+                              color: sel ? Colors.white : c,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12)),
                     ]),
                   ),
                 );
               }).toList(),
             ),
           ],
-
           const SizedBox(height: 40),
         ],
       ),
     );
   }
 
-  Widget _summaryCard(IconData icon, String label, String value, Color color) {
+  Widget _summaryCard(
+      IconData icon, String label, String value, Color color) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
@@ -414,14 +464,26 @@ class _ReportScreenState extends State<ReportScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: color.withOpacity(0.3)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6)],
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6)
+        ],
       ),
       child: Row(children: [
-        Container(width: 38, height: 38, decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 20)),
+        Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+                color: color.withOpacity(0.1), shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 20)),
         const SizedBox(width: 12),
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-          Text(value, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: color)),
+          Text(label,
+              style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          Text(value,
+              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  color: color)),
         ]),
       ]),
     );
@@ -429,11 +491,12 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Widget _buildDoneScreen() {
     if (_isSubmitting) {
-      return Center(
+      return const Center(
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          const CircularProgressIndicator(color: Color(0xFF135C52)),
-          const SizedBox(height: 20),
-          const Text('Submitting your report...', style: TextStyle(fontSize: 16, color: Colors.grey)),
+          CircularProgressIndicator(color: Color(0xFF135C52)),
+          SizedBox(height: 20),
+          Text('Submitting your report...',
+              style: TextStyle(fontSize: 16, color: Colors.grey)),
         ]),
       );
     }
@@ -441,30 +504,69 @@ class _ReportScreenState extends State<ReportScreen> {
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Container(width: 100, height: 100, decoration: BoxDecoration(color: const Color(0xFF135C52).withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.check_circle, color: Color(0xFF135C52), size: 60)),
+          Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                  color: const Color(0xFF135C52).withOpacity(0.1),
+                  shape: BoxShape.circle),
+              child: const Icon(Icons.check_circle,
+                  color: Color(0xFF135C52), size: 60)),
           const SizedBox(height: 24),
-          const Text('Report Submitted!', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Color(0xFF1A3C38))),
+          const Text('Report Submitted!',
+              style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1A3C38))),
           const SizedBox(height: 16),
-          if (_reportType != null) _summaryCard(Icons.report_problem, 'Problem', _reportType!, const Color(0xFFE74C3C)),
-          if (_location != null) _summaryCard(Icons.location_on, 'Location', _location!, const Color(0xFF135C52)),
-          if (_crowdedSpot.isNotEmpty) _summaryCard(Icons.people, 'Crowded Spot', _crowdedSpot, const Color(0xFF7B8FF7)),
+          if (_reportType != null)
+            _summaryCard(Icons.report_problem, 'Problem', _reportType!,
+                const Color(0xFFE74C3C)),
+          if (_location != null)
+            _summaryCard(Icons.location_on, 'Location', _location!,
+                const Color(0xFF135C52)),
+          if (_crowdedSpot.isNotEmpty)
+            _summaryCard(Icons.people, 'Crowded Spot', _crowdedSpot,
+                const Color(0xFF7B8FF7)),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () { setState(() { _reportType = null; _location = null; _crowdedSpot = ''; }); _startWizard(); },
+              onPressed: () {
+                setState(() {
+                  _reportType = null;
+                  _location = null;
+                  _crowdedSpot = '';
+                });
+                _startWizard();
+              },
               icon: const Icon(Icons.add_circle_outline),
-              label: const Text('Report Another Problem', style: TextStyle(fontWeight: FontWeight.w700)),
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF135C52), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+              label: const Text('Report Another Problem',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF135C52),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16))),
             ),
           ),
           const SizedBox(height: 12),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Back to Home', style: TextStyle(color: Color(0xFF135C52), fontWeight: FontWeight.w600))),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Back to Home',
+                  style: TextStyle(
+                      color: Color(0xFF135C52),
+                      fontWeight: FontWeight.w600))),
         ]),
       ),
     );
   }
 
   @override
-  void dispose() { _tts.stop(); _stt.stop(); super.dispose(); }
+  void dispose() {
+    _tts.stop();
+    _stt.stop();
+    super.dispose();
+  }
 }
