@@ -7,6 +7,7 @@ import 'report_screen.dart';
 import 'profile_screen.dart';
 import '../services/auth_service.dart';
 import '../services/voice_assistant_service.dart';
+import '../services/destination_resolver.dart';
 import '../widgets/voice_assistant_widget.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -86,6 +87,21 @@ class _HomeScreenState extends State<HomeScreen> {
     {'title': 'Study Rooms',        'icon': Icons.menu_book,      'color': Color(0xFF74C0E8), 'ready': false},
     {'title': 'My Profile',         'icon': Icons.person,         'color': Color(0xFFD4A8F0), 'ready': true},
   ];
+
+  Future<void> _navigateToSpokenDestination(String query) async {
+    await _assistant.speak('Looking for $query.');
+    final resolved = await DestinationResolver.resolve(query);
+    if (!mounted) return;
+    if (resolved == null) {
+      await _assistant.speak('Sorry, I could not find $query. Please try a different name.');
+      return;
+    }
+    await _assistant.speak(resolved.wasGeocoded
+        ? 'Found ${resolved.location.name}. Starting navigation.'
+        : 'Navigating to ${resolved.location.name}.');
+    if (!mounted) return;
+    Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(initialDestination: resolved.location)));
+  }
 
   void _openMap() => Navigator.push(context, MaterialPageRoute(builder: (_) => const MapScreen()));
   void _openToilets() => Navigator.push(context, MaterialPageRoute(builder: (_) => const ToiletsScreen()));
@@ -330,6 +346,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onOpenMap: _openMap,
           onOpenToilets: _openToilets,
           onOpenReport: _openReport,
+          onNavigateTo: _navigateToSpokenDestination,
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,

@@ -6,6 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/routing_service.dart';
+import '../services/navigation_controller.dart';
+import '../widgets/navigation_banner.dart';
 
 class AccessibleToilet {
   final String id;
@@ -141,17 +143,102 @@ class _ToiletsScreenState extends State<ToiletsScreen> {
   bool _showMap = false;
   bool _isSpeaking = false;
 
+  final NavigationController _navController = NavigationController();
+  bool _isNavigating = false;
+  AccessibleToilet? _navDestination;
+  RouteStep? _navStep;
+  double? _navDistanceToStep;
+
   @override
   void initState() {
     super.initState();
     _setupTts();
     _getUserLocation();
+    _setupNavigation();
     // Auto-announce on open
     Future.delayed(const Duration(milliseconds: 800), () {
       if (_voiceEnabled) {
         _speak('Accessible Toilets screen. There are ${_toilets.length} accessible toilets on campus. Tap any toilet to hear detailed directions.');
       }
     });
+  }
+
+  String _formatDistance(double meters) {
+    if (meters < 15) return 'now';
+    if (meters < 1000) return '${meters.toStringAsFixed(0)} metres';
+    return '${(meters / 1000).toStringAsFixed(1)} kilometres';
+  }
+
+  void _setupNavigation() {
+    _navController.onPosition = (pos) {
+      if (!mounted) return;
+      setState(() => _userLocation = pos);
+      if (_showMap) {
+        final zoom = _mapController.camera.zoom;
+        _mapController.move(pos, zoom < 17 ? 17 : zoom);
+      }
+    };
+    _navController.onStepChanged = (step, distance) {
+      if (!mounted) return;
+      setState(() {
+        _navStep = step;
+        _navDistanceToStep = distance;
+      });
+      _speak('${step.instruction}. ${_formatDistance(distance)}.');
+    };
+    _navController.onProgress = (distance) {
+      if (!mounted) return;
+      setState(() => _navDistanceToStep = distance);
+    };
+    _navController.onPeriodicReminder = (step, distanceToStep, distanceRemaining) {
+      if (!mounted) return;
+      _speak(
+          'Still heading to ${_navDestination?.name ?? 'the toilet'}. ${step.instruction}, ${_formatDistance(distanceToStep)} away. ${_formatDistance(distanceRemaining)} left overall.');
+    };
+    _navController.onArrived = () async {
+      final name = _navDestination?.name ?? 'the toilet';
+      await _speak('You have arrived at $name.');
+      if (!mounted) return;
+      setState(() {
+        _isNavigating = false;
+        _navDestination = null;
+        _navStep = null;
+        _navDistanceToStep = null;
+      });
+    };
+    _navController.onOffRoute = () async {
+      await _speak('You have gone off route. Recalculating.');
+      if (_userLocation != null) await _navController.reroute(_userLocation!);
+    };
+    _navController.onError = (message) async {
+      await _speak(message);
+      if (!mounted) return;
+      setState(() => _isNavigating = false);
+    };
+  }
+
+  Future<void> _startNavigation(AccessibleToilet toilet) async {
+    if (_userLocation == null) {
+      await _speak('Your location is not available yet. Please enable location access.');
+      return;
+    }
+    await _speak('Starting navigation to ${toilet.name}.');
+    setState(() => _navDestination = toilet);
+    final started = await _navController.start(_userLocation!, toilet.coordinates);
+    if (!mounted) return;
+    setState(() => _isNavigating = started);
+    if (!started) setState(() => _navDestination = null);
+  }
+
+  void _stopNavigation() {
+    _navController.stop();
+    setState(() {
+      _isNavigating = false;
+      _navDestination = null;
+      _navStep = null;
+      _navDistanceToStep = null;
+    });
+    _speak('Navigation stopped.');
   }
 
   Future<void> _setupTts() async {
@@ -201,11 +288,6 @@ class _ToiletsScreenState extends State<ToiletsScreen> {
     return dLng > 0 ? 'east' : 'west';
   }
 
-  Future<String?> _getRouteSteps(AccessibleToilet toilet) async {
-    if (_userLocation == null) return null;
-    return RoutingService.getRouteSteps(_userLocation!, toilet.coordinates);
-  }
-
   void _selectToilet(AccessibleToilet toilet) {
     setState(() => _selectedToilet = toilet);
     if (_voiceEnabled) {
@@ -220,7 +302,11 @@ class _ToiletsScreenState extends State<ToiletsScreen> {
   }
 
   @override
-  void dispose() { _tts.stop(); super.dispose(); }
+  void dispose() {
+    _tts.stop();
+    _navController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -260,6 +346,17 @@ class _ToiletsScreenState extends State<ToiletsScreen> {
                   SizedBox(width: 8),
                   Text('Speaking directions...', style: TextStyle(color: Colors.white, fontSize: 13)),
                 ],
+              ),
+            ),
+
+          if (_isNavigating && _navStep != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: NavigationBanner(
+                destinationName: _navDestination?.name ?? 'the toilet',
+                instruction: _navStep!.instruction,
+                distanceMeters: _navDistanceToStep,
+                onStop: _stopNavigation,
               ),
             ),
 
@@ -413,6 +510,10 @@ class _ToiletsScreenState extends State<ToiletsScreen> {
           urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           userAgentPackageName: 'com.accessmap.mzuni',
         ),
+        if (_isNavigating && _navController.routePolyline.isNotEmpty)
+          PolylineLayer(polylines: [
+            Polyline(points: _navController.routePolyline, strokeWidth: 5, color: const Color(0xFF1A6EBF)),
+          ]),
         MarkerLayer(
           markers: _toilets.map<Marker>((AccessibleToilet t) {
             bool isSelected = _selectedToilet?.id == t.id;
@@ -487,16 +588,9 @@ class _ToiletsScreenState extends State<ToiletsScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: () async {
-                  final steps = await _getRouteSteps(t);
-                  if (steps != null) {
-                    _speak('To reach ${t.name}. $steps');
-                  } else {
-                    _speak('To reach ${t.name}, head ${_getDirection(t)} for ${_getDistanceText(t)}.');
-                  }
-                },
-                icon: const Icon(Icons.near_me, size: 18),
-                label: const Text('Distance'),
+                onPressed: () => _startNavigation(t),
+                icon: const Icon(Icons.navigation, size: 18),
+                label: const Text('Navigate'),
                 style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFF1A6EBF), side: const BorderSide(color: Color(0xFF1A6EBF)), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               ),
             ),

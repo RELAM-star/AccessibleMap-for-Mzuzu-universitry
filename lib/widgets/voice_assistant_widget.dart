@@ -9,6 +9,10 @@ class VoiceAssistantWidget extends StatefulWidget {
   final VoidCallback? onOpenMap;
   final VoidCallback? onOpenToilets;
   final VoidCallback? onOpenReport;
+  final void Function(String destinationQuery)? onNavigateTo;
+  final VoidCallback? onStopNavigation;
+  final VoidCallback? onEnableObstacleAlerts;
+  final VoidCallback? onDisableObstacleAlerts;
 
   const VoiceAssistantWidget({
     super.key,
@@ -16,6 +20,10 @@ class VoiceAssistantWidget extends StatefulWidget {
     this.onOpenMap,
     this.onOpenToilets,
     this.onOpenReport,
+    this.onNavigateTo,
+    this.onStopNavigation,
+    this.onEnableObstacleAlerts,
+    this.onDisableObstacleAlerts,
   });
 
   @override
@@ -45,6 +53,13 @@ class _VoiceAssistantWidgetState extends State<VoiceAssistantWidget>
   void _handleCommand(String words) async {
     if (mounted) setState(() => _lastWords = words);
 
+    // ── Spoken destination ("navigate to the library", "take me to X") ──
+    final destination = _extractDestination(words);
+    if (destination != null) {
+      widget.onNavigateTo?.call(destination);
+      return;
+    }
+
     // ── Navigate commands ──
     if (_contains(words, ['open map', 'campus map', 'show map', 'go to map', 'navigate', 'buildings'])) {
       await widget.assistant.speak('Opening campus map.');
@@ -68,6 +83,22 @@ class _VoiceAssistantWidgetState extends State<VoiceAssistantWidget>
 
     if (_contains(words, ['help', 'what can you do', 'commands', 'options'])) {
       await widget.assistant.speak('I can help you with the following. Say: open map, to see the campus map. Say: find toilet, to find accessible toilets. Say: hello, to greet me. Say: stop, to stop me talking. How can I help you?');
+      return;
+    }
+
+    if (_contains(words, ['stop navigation', 'cancel navigation', 'end navigation', 'stop navigating', 'cancel navigating'])) {
+      widget.onStopNavigation?.call();
+      await widget.assistant.speak('Navigation stopped.');
+      return;
+    }
+
+    if (_contains(words, ['obstacle alerts on', 'enable obstacle', 'turn on obstacle', 'start obstacle detection'])) {
+      widget.onEnableObstacleAlerts?.call();
+      return;
+    }
+
+    if (_contains(words, ['obstacle alerts off', 'disable obstacle', 'turn off obstacle', 'stop obstacle detection'])) {
+      widget.onDisableObstacleAlerts?.call();
       return;
     }
 
@@ -114,6 +145,29 @@ class _VoiceAssistantWidgetState extends State<VoiceAssistantWidget>
 
   bool _contains(String input, List<String> keywords) {
     return keywords.any((k) => input.contains(k));
+  }
+
+  /// Pulls a destination phrase out of things like "navigate to the
+  /// library" or "take me to admin block". Returns null if no destination
+  /// prefix is present, or if it's a generic "go to map" style phrase that
+  /// should fall through to the ordinary map-opening command instead.
+  String? _extractDestination(String words) {
+    const prefixes = [
+      'navigate to ',
+      'take me to ',
+      'walk me to ',
+      'guide me to ',
+      'directions to ',
+      'go to ',
+    ];
+    for (final prefix in prefixes) {
+      final idx = words.indexOf(prefix);
+      if (idx == -1) continue;
+      final place = words.substring(idx + prefix.length).trim();
+      if (place.isEmpty || place == 'map' || place == 'the map') return null;
+      return place;
+    }
+    return null;
   }
 
   @override

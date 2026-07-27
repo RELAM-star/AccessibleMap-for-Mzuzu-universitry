@@ -5,19 +5,28 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:vibration/vibration.dart';
 import '../services/report_service.dart';
 import '../services/routing_service.dart';
 import '../services/firestore_service.dart';
+import '../services/navigation_controller.dart';
+import '../services/voice_assistant_service.dart';
+import '../services/destination_resolver.dart';
+import '../services/obstacle_detection_service.dart';
 import '../models/campus_location.dart';
+import '../widgets/navigation_banner.dart';
+import '../widgets/voice_assistant_widget.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+  final CampusLocation? initialDestination;
+
+  const MapScreen({super.key, this.initialDestination});
 
   @override
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   final MapController _mapController = MapController();
   final FlutterTts _tts = FlutterTts();
   final ReportService _reportService = ReportService();
@@ -32,13 +41,183 @@ class _MapScreenState extends State<MapScreen> {
   List<CampusLocation> _filtered = [];
   bool _isLoadingLocations = true;
 
+  final NavigationController _navController = NavigationController();
+  final VoiceAssistantService _voiceAssistant = VoiceAssistantService();
+  final ObstacleDetectionService _obstacleService = ObstacleDetectionService();
+  bool _isNavigating = false;
+  bool _autoStartHandled = false;
+  bool _obstacleAlertsEnabled = false;
+  CampusLocation? _navDestination;
+  RouteStep? _navStep;
+  double? _navDistanceToStep;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _setupTts();
     _getUserLocation();
     _loadLocations();
     _searchController.addListener(_onSearchChanged);
+    _setupNavigation();
+    _setupObstacleDetection();
+    _voiceAssistant.init();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      if (_obstacleService.isRunning) _obstacleService.stop();
+    } else if (state == AppLifecycleState.resumed) {
+      if (_obstacleAlertsEnabled && !_obstacleService.isRunning) _obstacleService.start();
+    }
+  }
+
+  void _setupObstacleDetection() {
+    _obstacleService.onObstacle = (alert) async {
+      if (!mounted) return;
+      final dirText = alert.direction == ObstacleDirection.left
+          ? 'to your left'
+          : alert.direction == ObstacleDirection.right
+              ? 'to your right'
+              : 'ahead';
+      final urgent = alert.urgency == ObstacleUrgency.veryClose;
+      _vibrate(urgent ? 400 : 150);
+      await _tts.speak(urgent ? 'Stop! Obstacle very close $dirText.' : 'Caution, obstacle $dirText.');
+    };
+    _obstacleService.onError = (message) {
+      if (!mounted) return;
+      setState(() => _obstacleAlertsEnabled = false);
+      _tts.speak(message);
+    };
+  }
+
+  Future<void> _vibrate(int durationMs) async {
+    try {
+      final hasVibrator = await Vibration.hasVibrator();
+      if (hasVibrator) Vibration.vibrate(duration: durationMs);
+    } catch (_) {}
+  }
+
+  Future<void> _toggleObstacleAlerts() async {
+    if (_obstacleAlertsEnabled) {
+      await _obstacleService.stop();
+      if (!mounted) return;
+      setState(() => _obstacleAlertsEnabled = false);
+      await _tts.speak('Obstacle alerts turned off.');
+      return;
+    }
+    await _tts.speak(
+        'Turning on obstacle alerts. Hold your phone with the camera facing forward as you walk. This is a supplementary aid, not a replacement for your cane.');
+    final started = await _obstacleService.start();
+    if (!mounted) return;
+    setState(() => _obstacleAlertsEnabled = started);
+    if (!started) {
+      await _tts.speak('Could not start obstacle alerts on this device.');
+    }
+  }
+
+  void _maybeAutoStartInitialDestination() {
+    if (_autoStartHandled) return;
+    final destination = widget.initialDestination;
+    if (destination == null || _userLocation == null) return;
+    _autoStartHandled = true;
+    setState(() => _selectedLocation = destination);
+    _mapController.move(destination.coordinates, 16);
+    _startNavigation(destination);
+  }
+
+  Future<void> _handleVoiceDestination(String query) async {
+    await _voiceAssistant.speak('Looking for $query.');
+    final resolved = await DestinationResolver.resolve(query);
+    if (!mounted) return;
+    if (resolved == null) {
+      await _voiceAssistant.speak('Sorry, I could not find $query. Please try a different name.');
+      return;
+    }
+    setState(() => _selectedLocation = resolved.location);
+    _mapController.move(resolved.location.coordinates, 16);
+    await _voiceAssistant.speak(resolved.wasGeocoded
+        ? 'Found ${resolved.location.name}. Starting navigation.'
+        : 'Navigating to ${resolved.location.name}.');
+    if (!mounted) return;
+    await _startNavigation(resolved.location);
+  }
+
+  String _formatDistance(double meters) {
+    if (meters < 15) return 'now';
+    if (meters < 1000) return '${meters.toStringAsFixed(0)} metres';
+    return '${(meters / 1000).toStringAsFixed(1)} kilometres';
+  }
+
+  void _setupNavigation() {
+    _navController.onPosition = (pos) {
+      if (!mounted) return;
+      setState(() => _userLocation = pos);
+      final zoom = _mapController.camera.zoom;
+      _mapController.move(pos, zoom < 17 ? 17 : zoom);
+    };
+    _navController.onStepChanged = (step, distance) {
+      if (!mounted) return;
+      setState(() {
+        _navStep = step;
+        _navDistanceToStep = distance;
+      });
+      _tts.speak('${step.instruction}. ${_formatDistance(distance)}.');
+    };
+    _navController.onProgress = (distance) {
+      if (!mounted) return;
+      setState(() => _navDistanceToStep = distance);
+    };
+    _navController.onPeriodicReminder = (step, distanceToStep, distanceRemaining) {
+      if (!mounted) return;
+      _tts.speak(
+          'Still heading to ${_navDestination?.name ?? 'your destination'}. ${step.instruction}, ${_formatDistance(distanceToStep)} away. ${_formatDistance(distanceRemaining)} left overall.');
+    };
+    _navController.onArrived = () async {
+      final name = _navDestination?.name ?? 'your destination';
+      await _tts.speak('You have arrived at $name.');
+      if (!mounted) return;
+      setState(() {
+        _isNavigating = false;
+        _navDestination = null;
+        _navStep = null;
+        _navDistanceToStep = null;
+      });
+    };
+    _navController.onOffRoute = () async {
+      await _tts.speak('You have gone off route. Recalculating.');
+      if (_userLocation != null) await _navController.reroute(_userLocation!);
+    };
+    _navController.onError = (message) async {
+      await _tts.speak(message);
+      if (!mounted) return;
+      setState(() => _isNavigating = false);
+    };
+  }
+
+  Future<void> _startNavigation(CampusLocation loc) async {
+    if (_userLocation == null) {
+      await _tts.speak('Your location is not available yet. Please enable location access.');
+      return;
+    }
+    await _tts.speak('Starting navigation to ${loc.name}.');
+    setState(() => _navDestination = loc);
+    final started = await _navController.start(_userLocation!, loc.coordinates);
+    if (!mounted) return;
+    setState(() => _isNavigating = started);
+    if (!started) setState(() => _navDestination = null);
+  }
+
+  void _stopNavigation() {
+    _navController.stop();
+    setState(() {
+      _isNavigating = false;
+      _navDestination = null;
+      _navStep = null;
+      _navDistanceToStep = null;
+    });
+    _tts.speak('Navigation stopped.');
   }
 
   Future<void> _loadLocations() async {
@@ -104,6 +283,7 @@ class _MapScreenState extends State<MapScreen> {
       }
       Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       if (mounted) setState(() => _userLocation = LatLng(position.latitude, position.longitude));
+      _maybeAutoStartInitialDestination();
     } catch (e) {
       if (mounted) _showError('Failed to get location: $e');
     }
@@ -122,6 +302,28 @@ class _MapScreenState extends State<MapScreen> {
     final reports = await _reportService.getReportsByLocation(location.name);
     setState(() => _locationReports = reports);
     if (_voiceEnabled) await _speakLocation(location);
+  }
+
+  static const String _customPinId = 'custom_pin';
+
+  Future<void> _onMapLongPress(LatLng point) async {
+    final pin = CampusLocation(
+      id: _customPinId,
+      name: 'Dropped Pin',
+      description: 'A custom location you selected on the map.',
+      coordinates: point,
+      type: LocationType.facility,
+      accessibilityInfo:
+          'Exact coordinates: ${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)}.',
+    );
+    setState(() {
+      _selectedLocation = pin;
+      _locationReports = [];
+    });
+    _mapController.move(point, 18);
+    if (_voiceEnabled) {
+      await _tts.speak('Pin dropped. Tap Navigate to walk there, or Read Aloud for the coordinates.');
+    }
   }
 
   Future<void> _speakLocation(CampusLocation location) async {
@@ -146,21 +348,6 @@ class _MapScreenState extends State<MapScreen> {
       }
     }
     await _tts.speak(speech);
-  }
-
-  Future<void> _speakDirections(CampusLocation loc) async {
-    await _tts.stop();
-    if (_userLocation == null) {
-      await _tts.speak(
-          'Your location is not available. Please enable location access.');
-      return;
-    }
-    final steps = await RoutingService.getRouteSteps(_userLocation!, loc.coordinates);
-    if (steps == null) {
-      await _tts.speak('Could not calculate directions to ${loc.name} right now.');
-      return;
-    }
-    await _tts.speak('To reach ${loc.name}. $steps. ${loc.accessibilityInfo}');
   }
 
   String _getDirection(LatLng from, LatLng to) {
@@ -190,8 +377,12 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tts.stop();
     _searchController.dispose();
+    _navController.dispose();
+    _voiceAssistant.dispose();
+    _obstacleService.dispose();
     super.dispose();
   }
 
@@ -212,12 +403,17 @@ class _MapScreenState extends State<MapScreen> {
                 });
                 _tts.stop();
               },
+              onLongPress: (_, point) => _onMapLongPress(point),
             ),
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.accessmap.mzuni',
               ),
+              if (_isNavigating && _navController.routePolyline.isNotEmpty)
+                PolylineLayer(polylines: [
+                  Polyline(points: _navController.routePolyline, strokeWidth: 5, color: const Color(0xFF1A6EBF)),
+                ]),
               if (_userLocation != null)
                 MarkerLayer(markers: [
                   Marker(
@@ -235,6 +431,18 @@ class _MapScreenState extends State<MapScreen> {
                               blurRadius: 8)
                         ],
                       ),
+                    ),
+                  ),
+                ]),
+              if (_selectedLocation != null && _selectedLocation!.id == _customPinId)
+                MarkerLayer(markers: [
+                  Marker(
+                    point: _selectedLocation!.coordinates,
+                    width: 46,
+                    height: 46,
+                    child: GestureDetector(
+                      onTap: () => _onLocationTapped(_selectedLocation!),
+                      child: const Icon(Icons.location_on, color: Color(0xFFE74C3C), size: 46),
                     ),
                   ),
                 ]),
@@ -281,6 +489,67 @@ class _MapScreenState extends State<MapScreen> {
             left: 16,
             right: 16,
             child: _buildTopBar(),
+          ),
+          if (_isNavigating && _navStep != null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 70,
+              left: 16,
+              right: 16,
+              child: NavigationBanner(
+                destinationName: _navDestination?.name ?? 'destination',
+                instruction: _navStep!.instruction,
+                distanceMeters: _navDistanceToStep,
+                onStop: _stopNavigation,
+              ),
+            ),
+          Positioned(
+            bottom: _selectedLocation != null ? 230 : 20,
+            left: 16,
+            right: 16,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_selectedLocation == null && !_isNavigating)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text(
+                        'Tip: tap the mic and say "navigate to the library" — or long-press the map to drop a pin',
+                        style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF135C52),
+                      borderRadius: BorderRadius.circular(40),
+                      boxShadow: [
+                        BoxShadow(color: const Color(0xFF1A7A6E).withOpacity(0.4), blurRadius: 16, offset: const Offset(0, 6)),
+                      ],
+                    ),
+                    child: VoiceAssistantWidget(
+                      assistant: _voiceAssistant,
+                      onNavigateTo: _handleVoiceDestination,
+                      onStopNavigation: _stopNavigation,
+                      onEnableObstacleAlerts: () {
+                        if (!_obstacleAlertsEnabled) _toggleObstacleAlerts();
+                      },
+                      onDisableObstacleAlerts: () {
+                        if (_obstacleAlertsEnabled) _toggleObstacleAlerts();
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           Positioned(
             bottom: _selectedLocation != null ? 230 : 110,
@@ -381,6 +650,23 @@ class _MapScreenState extends State<MapScreen> {
       const SizedBox(height: 8),
       _btn(Icons.remove, () => _mapController.move(
           _mapController.camera.center, _mapController.camera.zoom - 1)),
+      const SizedBox(height: 8),
+      GestureDetector(
+        onTap: _toggleObstacleAlerts,
+        child: Container(
+          width: 44, height: 44,
+          decoration: BoxDecoration(
+            color: _obstacleAlertsEnabled ? const Color(0xFFE74C3C) : Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8)],
+          ),
+          child: Icon(
+            _obstacleAlertsEnabled ? Icons.sensors : Icons.sensors_off,
+            color: _obstacleAlertsEnabled ? Colors.white : const Color(0xFF1A6EBF),
+            size: 20,
+          ),
+        ),
+      ),
     ]);
   }
 
@@ -525,9 +811,9 @@ class _MapScreenState extends State<MapScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: OutlinedButton.icon(
-              onPressed: () => _speakDirections(loc),
-              icon: const Icon(Icons.directions_walk, size: 18),
-              label: const Text('Directions'),
+              onPressed: () => _startNavigation(loc),
+              icon: const Icon(Icons.navigation, size: 18),
+              label: const Text('Navigate'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xFF1A6EBF),
                 side: const BorderSide(color: Color(0xFF1A6EBF)),

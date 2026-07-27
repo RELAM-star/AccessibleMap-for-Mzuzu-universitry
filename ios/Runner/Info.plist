@@ -72,5 +72,7 @@
 	<string>AccessMap needs microphone access for voice commands and reporting problems.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>AccessMap needs speech recognition to understand your voice commands.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>AccessMap uses the camera to warn you about obstacles like walls, poles, and people directly ahead while you walk.</string>
 </dict>
 </plist>
