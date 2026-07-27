@@ -25,7 +25,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadProfile() async {
-    final profile = await _authService.getUserProfile('test_user_123');
+    final uid = _authService.currentUserId;
+    if (uid == null) {
+      if (mounted) {
+        setState(() {
+          _user = null;
+          _needsVoice = true;
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+
+    final profile = await _authService.getUserProfile(uid);
     if (mounted) {
       setState(() {
         _user = profile;
@@ -37,7 +49,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _savePreferences() async {
     setState(() => _isSaving = true);
-    await Future.delayed(const Duration(seconds: 1));
+    final uid = _authService.currentUserId;
+    if (uid != null) {
+      await _authService.updateProfile(uid, {
+        'needsVoiceNavigation': _needsVoice,
+      });
+    }
     if (!mounted) return;
     setState(() => _isSaving = false);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -162,7 +179,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           (v) => setState(() => _needsVoice = v),
                         ),
                         const SizedBox(height: 10),
-                
+
                         const SizedBox(height: 24),
 
                         // Save button

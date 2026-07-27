@@ -5,6 +5,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import '../services/routing_service.dart';
 
 class AccessibleToilet {
   final String id;
@@ -157,6 +158,7 @@ class _ToiletsScreenState extends State<ToiletsScreen> {
     await _tts.setLanguage('en-US');
     await _tts.setSpeechRate(0.42);
     await _tts.setVolume(1.0);
+    _tts.setErrorHandler((error) {});
     _tts.setStartHandler(() => setState(() => _isSpeaking = true));
     _tts.setCompletionHandler(() => setState(() => _isSpeaking = false));
   }
@@ -197,6 +199,11 @@ class _ToiletsScreenState extends State<ToiletsScreen> {
     double dLng = toilet.coordinates.longitude - _userLocation!.longitude;
     if (dLat.abs() > dLng.abs()) return dLat > 0 ? 'north' : 'south';
     return dLng > 0 ? 'east' : 'west';
+  }
+
+  Future<String?> _getRouteSteps(AccessibleToilet toilet) async {
+    if (_userLocation == null) return null;
+    return RoutingService.getRouteSteps(_userLocation!, toilet.coordinates);
   }
 
   void _selectToilet(AccessibleToilet toilet) {
@@ -480,7 +487,14 @@ class _ToiletsScreenState extends State<ToiletsScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: () => _speak('To reach ${t.name}, head ${_getDirection(t)} for ${_getDistanceText(t)}.'),
+                onPressed: () async {
+                  final steps = await _getRouteSteps(t);
+                  if (steps != null) {
+                    _speak('To reach ${t.name}. $steps');
+                  } else {
+                    _speak('To reach ${t.name}, head ${_getDirection(t)} for ${_getDistanceText(t)}.');
+                  }
+                },
                 icon: const Icon(Icons.near_me, size: 18),
                 label: const Text('Distance'),
                 style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFF1A6EBF), side: const BorderSide(color: Color(0xFF1A6EBF)), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),

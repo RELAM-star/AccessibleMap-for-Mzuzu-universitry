@@ -5,46 +5,10 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
-import '../services/location_service.dart';
 import '../services/report_service.dart';
-
-enum LocationType { academic, admin, library, hostel, facility, transport }
-
-class CampusLocation {
-  final String id;
-  final String name;
-  final String description;
-  final LatLng coordinates;
-  final LocationType type;
-  final String accessibilityInfo;
-
-  CampusLocation({
-    required this.id,
-    required this.name,
-    required this.description,
-    required this.coordinates,
-    required this.type,
-    required this.accessibilityInfo,
-  });
-
-  static List<CampusLocation> get mzuniBuildings => [
-    CampusLocation(id: 'main_admin', name: 'Main Administration Block', description: 'Central admin offices, Registry, and Student Affairs', coordinates: LatLng(-11.4648, 34.0195), type: LocationType.admin, accessibilityInfo: 'Ramp access at main entrance. Wide corridors.'),
-    CampusLocation(id: 'library', name: 'Mzuni Main Library', description: 'University library with study rooms and computer lab', coordinates: LatLng(-11.4655, 34.0202), type: LocationType.library, accessibilityInfo: 'Step-free entrance on east side. Braille materials available.'),
-    CampusLocation(id: 'foh', name: 'Faculty of Humanities', description: 'Arts, Social Sciences and Languages', coordinates: LatLng(-11.4660, 34.0190), type: LocationType.academic, accessibilityInfo: 'Ground floor fully accessible. Ramp at north entrance.'),
-    CampusLocation(id: 'fose', name: 'Faculty of Science & Engineering', description: 'Science labs, engineering workshops and lecture rooms', coordinates: LatLng(-11.4645, 34.0210), type: LocationType.academic, accessibilityInfo: 'Accessible entrance on south side. Ground floor wheelchair friendly.'),
-    CampusLocation(id: 'fob', name: 'Faculty of Business', description: 'Business, Economics and Management lecture halls', coordinates: LatLng(-11.4652, 34.0185), type: LocationType.academic, accessibilityInfo: 'Step-free access at main door. Wide corridors throughout.'),
-    CampusLocation(id: 'foe', name: 'Faculty of Education', description: 'Education department offices and lecture rooms', coordinates: LatLng(-11.4665, 34.0198), type: LocationType.academic, accessibilityInfo: 'Ramp at main entrance. All classrooms on ground floor accessible.'),
-    CampusLocation(id: 'student_centre', name: 'Student Centre', description: 'Student union, cafeteria, and recreation facilities', coordinates: LatLng(-11.4658, 34.0207), type: LocationType.facility, accessibilityInfo: 'Fully accessible. Accessible toilet inside. Wide entrance doors.'),
-    CampusLocation(id: 'chapel', name: 'University Chapel', description: 'Multi-faith worship space for students and staff', coordinates: LatLng(-11.4642, 34.0200), type: LocationType.facility, accessibilityInfo: 'Level access at all entrances. Reserved seating for wheelchair users.'),
-    CampusLocation(id: 'sports', name: 'Sports Complex', description: 'Football field, basketball courts and gym', coordinates: LatLng(-11.4670, 34.0215), type: LocationType.facility, accessibilityInfo: 'Paved pathway from main road. Viewing area for wheelchair users.'),
-    CampusLocation(id: 'chancellor_hostel', name: "Chancellor's Hostel", description: 'Male student residence block', coordinates: LatLng(-11.4638, 34.0188), type: LocationType.hostel, accessibilityInfo: 'Ground floor rooms for disabled students. Accessible bathroom available.'),
-    CampusLocation(id: 'female_hostel', name: 'Female Hostel', description: 'Female student residence block', coordinates: LatLng(-11.4640, 34.0205), type: LocationType.hostel, accessibilityInfo: 'Ramp at entrance. Accessible rooms available on request.'),
-    CampusLocation(id: 'health_centre', name: 'University Health Centre', description: 'Campus clinic for students and staff', coordinates: LatLng(-11.4650, 34.0175), type: LocationType.facility, accessibilityInfo: 'Fully accessible. Priority service for disabled students.'),
-    CampusLocation(id: 'bus_stop', name: 'Main Campus Bus Stop', description: 'Minibus transport to Mzuzu city centre', coordinates: LatLng(-11.4635, 34.0195), type: LocationType.transport, accessibilityInfo: 'Covered waiting area. Low-floor minibuses on some routes.'),
-    CampusLocation(id: 'cafeteria', name: 'Main Cafeteria', description: 'University dining hall serving all meals', coordinates: LatLng(-11.4656, 34.0193), type: LocationType.facility, accessibilityInfo: 'Step-free entrance. Wide aisles. Staff available to assist.'),
-    CampusLocation(id: 'ict_centre', name: 'ICT Centre', description: 'Computer labs and internet access for students', coordinates: LatLng(-11.4648, 34.0208), type: LocationType.academic, accessibilityInfo: 'Ground floor accessible. Screen reader software available.'),
-  ];
-}
+import '../services/routing_service.dart';
+import '../services/firestore_service.dart';
+import '../models/campus_location.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -56,45 +20,99 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   final MapController _mapController = MapController();
   final FlutterTts _tts = FlutterTts();
-  final LocationService _locationService = LocationService();
   final ReportService _reportService = ReportService();
-
+  final TextEditingController _searchController = TextEditingController();
+  final List<CampusLocation> _localBuildings = CampusLocation.mzuniBuildings;
   static const LatLng _mzuniCenter = LatLng(-11.4653, 34.0199);
   CampusLocation? _selectedLocation;
   bool _voiceEnabled = true;
   LatLng? _userLocation;
   List<ReportModel> _locationReports = [];
-  final List<CampusLocation> _buildings = CampusLocation.mzuniBuildings;
+  List<CampusLocation> _buildings = [];
+  List<CampusLocation> _filtered = [];
+  bool _isLoadingLocations = true;
 
   @override
   void initState() {
     super.initState();
     _setupTts();
     _getUserLocation();
+    _loadLocations();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  Future<void> _loadLocations() async {
+    try {
+      final service = FirestoreService();
+      final locations = <CampusLocation>[];
+      final fetched = await service.getLocations();
+      if (fetched.isNotEmpty) {
+        locations.addAll(fetched);
+      }
+      if (mounted) {
+        setState(() {
+          _buildings = locations.isNotEmpty ? locations : _localBuildings;
+          _filtered = List.from(_buildings);
+          _isLoadingLocations = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _buildings = _localBuildings;
+          _filtered = List.from(_buildings);
+          _isLoadingLocations = false;
+        });
+      }
+    }
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.trim().toLowerCase();
+    setState(() {
+      _filtered = query.isEmpty
+          ? List.from(_buildings)
+          : _buildings.where((b) => b.name.toLowerCase().contains(query) || b.description.toLowerCase().contains(query)).toList();
+    });
   }
 
   Future<void> _setupTts() async {
     await _tts.setLanguage('en-US');
     await _tts.setSpeechRate(0.45);
     await _tts.setVolume(1.0);
+    _tts.setErrorHandler((error) {});
   }
 
   Future<void> _getUserLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
+      if (!serviceEnabled) {
+        if (mounted) _showError('Location services are disabled. Enable them in settings.');
+        return;
+      }
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) return;
+        if (permission == LocationPermission.denied) {
+          if (mounted) _showError('Location permission denied.');
+          return;
+        }
       }
-      if (permission == LocationPermission.deniedForever) return;
-      Position position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
-      if (mounted) {
-        setState(() => _userLocation = LatLng(position.latitude, position.longitude));
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) _showError('Location permission permanently denied. Enable it in settings.');
+        return;
       }
-    } catch (_) {}
+      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      if (mounted) setState(() => _userLocation = LatLng(position.latitude, position.longitude));
+    } catch (e) {
+      if (mounted) _showError('Failed to get location: $e');
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: const Color(0xFFE74C3C)),
+    );
   }
 
   Future<void> _onLocationTapped(CampusLocation location) async {
@@ -137,18 +155,12 @@ class _MapScreenState extends State<MapScreen> {
           'Your location is not available. Please enable location access.');
       return;
     }
-    double distance = Geolocator.distanceBetween(
-      _userLocation!.latitude,
-      _userLocation!.longitude,
-      loc.coordinates.latitude,
-      loc.coordinates.longitude,
-    );
-    String dir = _getDirection(_userLocation!, loc.coordinates);
-    String distText = distance < 1000
-        ? '${distance.toStringAsFixed(0)} metres'
-        : '${(distance / 1000).toStringAsFixed(1)} kilometres';
-    await _tts.speak(
-        'To reach ${loc.name}, head $dir for $distText. ${loc.accessibilityInfo}');
+    final steps = await RoutingService.getRouteSteps(_userLocation!, loc.coordinates);
+    if (steps == null) {
+      await _tts.speak('Could not calculate directions to ${loc.name} right now.');
+      return;
+    }
+    await _tts.speak('To reach ${loc.name}. $steps. ${loc.accessibilityInfo}');
   }
 
   String _getDirection(LatLng from, LatLng to) {
@@ -179,6 +191,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void dispose() {
     _tts.stop();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -307,20 +320,20 @@ class _MapScreenState extends State<MapScreen> {
       ),
       const SizedBox(width: 10),
       Expanded(
-        child: GestureDetector(
-          onTap: _showBuildingsList,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8)],
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8)]),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search buildings...',
+              hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+              prefixIcon: const Icon(Icons.search, color: Color(0xFF1A6EBF), size: 20),
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: EdgeInsets.zero,
             ),
-            child: const Row(children: [
-              Icon(Icons.search, color: Color(0xFF1A6EBF), size: 20),
-              SizedBox(width: 8),
-              Text('Search buildings...', style: TextStyle(color: Colors.grey, fontSize: 14)),
-            ]),
+            onChanged: (_) => _showBuildingsList(),
           ),
         ),
       ),
@@ -528,6 +541,8 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _showBuildingsList() {
+    final query = _searchController.text.trim().toLowerCase();
+    final results = query.isEmpty ? _buildings : _filtered;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -538,47 +553,21 @@ class _MapScreenState extends State<MapScreen> {
         initialChildSize: 0.6,
         maxChildSize: 0.9,
         builder: (_, sc) => Column(children: [
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 12),
-            width: 40, height: 4,
-            decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2)),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: Text('Mzuni Buildings',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-          ),
+          Container(margin: const EdgeInsets.symmetric(vertical: 12), width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text(query.isEmpty ? 'Mzuni Buildings' : 'Results for "$query"', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
           const SizedBox(height: 10),
-          Expanded(
-            child: ListView.builder(
-              controller: sc,
-              itemCount: _buildings.length,
-              itemBuilder: (_, i) {
-                final CampusLocation loc = _buildings[i];
-                return ListTile(
-                  leading: Container(
-                    width: 42, height: 42,
-                    decoration: BoxDecoration(
-                      color: _getTypeColor(loc.type).withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(_getTypeIcon(loc.type),
-                        color: _getTypeColor(loc.type), size: 22),
-                  ),
-                  title: Text(loc.name,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text(loc.description,
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _onLocationTapped(loc);
-                  },
-                );
-              },
-            ),
-          ),
+          Expanded(child: ListView.builder(
+            controller: sc, itemCount: results.length,
+            itemBuilder: (_, i) {
+              final CampusLocation loc = results[i];
+              return ListTile(
+                leading: Container(width: 42, height: 42, decoration: BoxDecoration(color: _getTypeColor(loc.type).withOpacity(0.12), borderRadius: BorderRadius.circular(10)), child: Icon(_getTypeIcon(loc.type), color: _getTypeColor(loc.type), size: 22)),
+                title: Text(loc.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(loc.description, maxLines: 1, overflow: TextOverflow.ellipsis),
+                onTap: () { Navigator.pop(context); _onLocationTapped(loc); },
+              );
+            },
+          )),
         ]),
       ),
     );

@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:accessmap_mzuni/firebase_options.dart';
 import 'package:accessmap_mzuni/screens/splash_screen.dart';
 import 'package:accessmap_mzuni/theme/app_theme.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(AccessMapApp());
 }
 

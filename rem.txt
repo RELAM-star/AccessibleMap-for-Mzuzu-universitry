@@ -1,0 +1,85 @@
+Optimized tool selectionI’m reviewing the project structure and key app files to identify what still appears incomplete or unfinished.
+
+Searched for regex `TODO|FIXME|placeholder|TBD|Coming soon` (`**/lib/**`), 3 results
+
+Read [](file:///home/hastings/projects/AccessibleMap-for-Mzuzu-universitry/pubspec.yaml)
+
+Read [](file:///home/hastings/projects/AccessibleMap-for-Mzuzu-universitry/README.md)
+
+I’m checking the app’s current implementation and health so I can give you a practical list of what is still missing.
+
+Read [](file:///home/hastings/projects/AccessibleMap-for-Mzuzu-universitry/lib/main.dart)
+
+Read [](file:///home/hastings/projects/AccessibleMap-for-Mzuzu-universitry/lib/screens/home_screen.dart)
+
+Read [](file:///home/hastings/projects/AccessibleMap-for-Mzuzu-universitry/lib/services/firestore_service.dart)
+
+I’m validating the current state by running the project checks so the assessment is based on what the app actually does today.
+
+Ran terminal command:  flutter test
+
+Read [](file:///home/hastings/projects/AccessibleMap-for-Mzuzu-universitry/lib/services/auth_service.dart)
+
+I’m reviewing the main screens for placeholders and backend gaps so the summary reflects the project’s real remaining work.
+
+Read [](file:///home/hastings/projects/AccessibleMap-for-Mzuzu-universitry/lib/screens/map_screen.dart#1-1), lines 1 to 260
+
+Read [](file:///home/hastings/projects/AccessibleMap-for-Mzuzu-universitry/lib/screens/toilets_screen.dart#1-1), lines 1 to 260
+
+Read [](file:///home/hastings/projects/AccessibleMap-for-Mzuzu-universitry/lib/screens/nearby_buildings_screen.dart)
+
+Read [](file:///home/hastings/projects/AccessibleMap-for-Mzuzu-universitry/lib/screens/study_rooms_screen.dart)
+
+Read [](file:///home/hastings/projects/AccessibleMap-for-Mzuzu-universitry/lib/screens/report_screen.dart#1-1), lines 1 to 260
+
+The core screens are present and functional, and I’m narrowing this down to the parts that still need real production polish rather than just feature coverage.
+
+Read [](file:///home/hastings/projects/AccessibleMap-for-Mzuzu-universitry/lib/screens/profile_screen.dart)
+
+I have enough of the app’s structure now, and I’m running a static analysis pass to identify the remaining technical gaps more precisely.
+
+Ran terminal command:  flutter analyze
+
+Read [](file:///home/hastings/.config/Code/User/workspaceStorage/2396f1cb0a4693f4dd01e5bfdfea94c9/GitHub.copilot-chat/chat-session-resources/8ed415af-8a51-48b1-8124-e2e6e6dea1bd/call_e63dcTeljbmDGvolbhesGlWI__vscode-1784529288310/content.txt#1-1), lines 1 to 250
+
+## Current status
+
+The app is already in a strong prototype state. I verified that:
+
+- `flutter test` passed: 5 tests passed.
+- `flutter analyze` shows mostly style/deprecation warnings, not blocking errors.
+
+## What still remains to complete it properly
+
+1. Replace hardcoded user data
+- The app still uses placeholder values such as `test_user_123` in home_screen.dart and profile_screen.dart.
+- This should be switched to the currently signed-in user from Firebase.
+
+2. Finish the “coming soon” features
+- Some actions are still not fully implemented, especially the emergency/help flow in voice_assistant_widget.dart and the feature cards in home_screen.dart.
+
+3. Connect the app to a real production setup
+- Firebase auth and Firestore are wired in, but the app should be validated with real Firebase rules, real users, and real report data in auth_service.dart and firestore_service.dart.
+
+4. Improve real-world data accuracy
+- The campus locations, toilets, and study rooms are currently modeled as sample data in map_screen.dart, toilets_screen.dart, and study_rooms_screen.dart.
+- For a finished app, these should be backed by real campus data and maintained regularly.
+
+5. Polish the app for production
+- There are still deprecated Flutter API usages and lint-style warnings across several screens.
+- This is not a blocker, but it is needed for a cleaner and more maintainable release.
+
+6. Add stronger testing and device validation
+- The current tests are basic.
+- You should add more integration tests for login, profile, report submission, and navigation flows.
+
+## Bottom line
+
+If your goal is a working demo, the project is already close.
+If your goal is a fully completed, production-ready app, the main remaining work is:
+- real user/session integration,
+- finishing the remaining features,
+- real data/backend cleanup,
+- and release polish.
+
+If you want, I can turn this into a step-by-step completion checklist for you next.

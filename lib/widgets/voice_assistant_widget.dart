@@ -8,12 +8,14 @@ class VoiceAssistantWidget extends StatefulWidget {
   final VoiceAssistantService assistant;
   final VoidCallback? onOpenMap;
   final VoidCallback? onOpenToilets;
+  final VoidCallback? onOpenReport;
 
   const VoiceAssistantWidget({
     super.key,
     required this.assistant,
     this.onOpenMap,
     this.onOpenToilets,
+    this.onOpenReport,
   });
 
   @override
@@ -99,8 +101,10 @@ class _VoiceAssistantWidgetState extends State<VoiceAssistantWidget>
       return;
     }
 
-    if (_contains(words, ['emergency', 'help me', 'i need help', 'accident'])) {
-      await widget.assistant.speak('If this is an emergency, please call security or ask someone nearby for immediate help. The Emergency feature is coming soon in AccessMap.');
+    if (_contains(words, ['emergency', 'help me', 'i need help', 'accident', 'unsafe'])) {
+      await widget.assistant.speak('I am opening the report screen so you can share the problem quickly. If this is an immediate danger, contact campus security or ask someone nearby for help right away.');
+      await Future.delayed(const Duration(milliseconds: 800));
+      widget.onOpenReport?.call();
       return;
     }
 

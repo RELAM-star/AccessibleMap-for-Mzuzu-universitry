@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:accessmap_mzuni/screens/home_screen.dart';
 
@@ -13,6 +14,7 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _controller;
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleAnim;
+  Timer? _navTimer;
 
   @override
   void initState() {
@@ -24,7 +26,7 @@ class _SplashScreenState extends State<SplashScreen>
     _scaleAnim = Tween<double>(begin: 0.7, end: 1).animate(
         CurvedAnimation(parent: _controller, curve: Curves.elasticOut));
     _controller.forward();
-    Future.delayed(const Duration(milliseconds: 2500), () {
+    _navTimer = Timer(const Duration(milliseconds: 2500), () {
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
@@ -35,6 +37,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
+    _navTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }

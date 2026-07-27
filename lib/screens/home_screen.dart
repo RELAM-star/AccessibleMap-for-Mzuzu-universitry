@@ -18,7 +18,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final AuthService _authService = AuthService();
   final VoiceAssistantService _assistant = VoiceAssistantService();
-  String _firstName = 'Chisomo';
+  String _firstName = 'User';
   String _role = 'STUDENT';
 
   @override
@@ -29,11 +29,37 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadProfile() async {
-    final profile = await _authService.getUserProfile('test_user_123');
-    if (mounted && profile != null) {
+    final currentUser = _authService.currentUser;
+    final uid = _authService.currentUserId;
+
+    if (mounted) {
       setState(() {
-        _firstName = profile.fullName.split(' ').first;
+        if (currentUser?.displayName != null && currentUser!.displayName!.trim().isNotEmpty) {
+          _firstName = currentUser.displayName!.trim().split(' ').first;
+        } else if (currentUser?.email != null && currentUser!.email!.isNotEmpty) {
+          _firstName = currentUser.email!.split('@').first;
+        }
+      });
+    }
+
+    if (uid == null) return;
+
+    final profile = await _authService.getUserProfile(uid);
+    if (!mounted) return;
+
+    if (profile != null) {
+      setState(() {
+        final parts = profile.fullName.split(' ');
+        _firstName = parts.isNotEmpty ? parts.first : 'User';
         _role = profile.role.toUpperCase();
+      });
+    } else if (currentUser != null) {
+      setState(() {
+        if (currentUser.displayName != null && currentUser.displayName!.trim().isNotEmpty) {
+          _firstName = currentUser.displayName!.trim().split(' ').first;
+        } else if (currentUser.email != null && currentUser.email!.isNotEmpty) {
+          _firstName = currentUser.email!.split('@').first;
+        }
       });
     }
   }
@@ -41,8 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _initAssistant() async {
     await _assistant.init();
     await Future.delayed(const Duration(milliseconds: 1000));
-    await _assistant.speak(
-        'Welcome to AccessMap, $_firstName. Tap the microphone button and tell me what you need. Say help for a list of commands.');
+    await _assistant.speak('Welcome to AccessMap, $_firstName. Tap the microphone button and tell me what you need. Say help for a list of commands.');
   }
 
   final List<Map<String, dynamic>> _categories = [
@@ -54,12 +79,12 @@ class _HomeScreenState extends State<HomeScreen> {
   ];
 
   final List<Map<String, dynamic>> _features = [
-    {'title': 'Campus Map', 'icon': Icons.map, 'color': Color(0xFFB8C9F5), 'ready': true},
-    {'title': 'Accessible Toilets', 'icon': Icons.wc, 'color': Color(0xFF57CC99), 'ready': true},
-    {'title': 'Report Problem', 'icon': Icons.report_problem, 'color': Color(0xFFF4A261), 'ready': true},
-    {'title': 'Nearby Buildings', 'icon': Icons.location_city, 'color': Color(0xFFE76F6F), 'ready': false},
-    {'title': 'Study Rooms', 'icon': Icons.menu_book, 'color': Color(0xFF74C0E8), 'ready': false},
-    {'title': 'My Profile', 'icon': Icons.person, 'color': Color(0xFFD4A8F0), 'ready': true},
+    {'title': 'Campus Map',         'icon': Icons.map,            'color': Color(0xFFB8C9F5), 'ready': true},
+    {'title': 'Accessible Toilets', 'icon': Icons.wc,             'color': Color(0xFF57CC99), 'ready': true},
+    {'title': 'Report Problem',      'icon': Icons.report_problem, 'color': Color(0xFFF4A261), 'ready': true},
+    {'title': 'Nearby Buildings',       'icon': Icons.location_city, 'color': Color(0xFFE76F6F), 'ready': false},
+    {'title': 'Study Rooms',        'icon': Icons.menu_book,      'color': Color(0xFF74C0E8), 'ready': false},
+    {'title': 'My Profile',         'icon': Icons.person,         'color': Color(0xFFD4A8F0), 'ready': true},
   ];
 
   void _openMap() => Navigator.push(context, MaterialPageRoute(builder: (_) => const MapScreen()));
@@ -67,7 +92,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openReport() => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportScreen()));
   void _openProfile() => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
 
-  // ── Category pill tap handler ──
   void _onCategoryTap(Map<String, dynamic> c) {
     if (!(c['ready'] as bool)) {
       _assistant.speak('${c['title']} is coming soon.');
@@ -78,7 +102,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (c['title'] == 'Report') _openReport();
   }
 
-  // ── Feature card tap handler ──
   void _onFeatureTap(Map<String, dynamic> f) {
     if (!(f['ready'] as bool)) {
       _assistant.speak('${f['title']} is coming soon.');
@@ -278,16 +301,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                             Icon(f['icon'] as IconData, color: Colors.white, size: 28),
                             const SizedBox(height: 8),
-                            Text(f['title'] as String,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13,
-                                    height: 1.2),
-                                textAlign: TextAlign.center),
-                            if (!ready)
-                              Text('Coming Soon',
-                                  style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)),
+                            Text(f['title'] as String, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13, height: 1.2), textAlign: TextAlign.center),
+                            if (!ready) Text('Coming Soon', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)),
                           ]),
                         ),
                       ]),
@@ -314,6 +329,7 @@ class _HomeScreenState extends State<HomeScreen> {
           assistant: _assistant,
           onOpenMap: _openMap,
           onOpenToilets: _openToilets,
+          onOpenReport: _openReport,
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,

@@ -3,7 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
-import '../services/report_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/firestore_service.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -14,7 +15,7 @@ class ReportScreen extends StatefulWidget {
 class _ReportScreenState extends State<ReportScreen> {
   final FlutterTts _tts = FlutterTts();
   final SpeechToText _stt = SpeechToText();
-  final ReportService _reportService = ReportService();
+  final FirestoreService _firestore = FirestoreService();
   bool _sttAvailable = false;
 
   int _step = 0;
@@ -65,6 +66,7 @@ class _ReportScreenState extends State<ReportScreen> {
     await _tts.setLanguage('en-US');
     await _tts.setSpeechRate(0.42);
     await _tts.setVolume(1.0);
+    _tts.setErrorHandler((error) {});
     _tts.setStartHandler(() => setState(() => _isSpeaking = true));
     _tts.setCompletionHandler(() => setState(() => _isSpeaking = false));
   }
@@ -189,24 +191,27 @@ class _ReportScreenState extends State<ReportScreen> {
   }
 
   Future<void> _doSubmit() async {
-    setState(() {
-      _isSubmitting = true;
-      _step = 5;
-    });
+    setState(() { _isSubmitting = true; _step = 5; });
     try {
-      await _reportService.submitReport(
-        locationName: _location ?? 'Unknown Location',
-        issueType: _reportType ?? 'Other Hazard',
-        description: _crowdedSpot.isNotEmpty
-            ? _crowdedSpot
-            : _reportType ?? 'No description',
-      );
-      setState(() => _isSubmitting = false);
-      await _speak('Your report has been submitted successfully. Thank you for helping other students stay safe on campus.');
+      final user = FirebaseAuth.instance.currentUser;
+      await _firestore.submitReport({
+        'type': _reportType,
+        'location': _location,
+        'crowdedSpot': _crowdedSpot,
+        'userId': user?.uid ?? 'anonymous',
+      });
     } catch (e) {
-      setState(() => _isSubmitting = false);
-      await _speak('Sorry, there was an error submitting your report. Please try again.');
+      await _speak('There was an error submitting your report. Please try again.');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to submit report: $e'), backgroundColor: const Color(0xFFE74C3C)),
+        );
+      }
+      setState(() { _isSubmitting = false; _step = 4; });
+      return;
     }
+    setState(() => _isSubmitting = false);
+    await _speak('Your report has been submitted successfully. Thank you for helping other students stay safe on campus.');
   }
 
   String? _matchType(String spoken) {
