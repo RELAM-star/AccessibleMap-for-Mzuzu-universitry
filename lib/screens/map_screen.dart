@@ -6,9 +6,9 @@ import 'package:latlong2/latlong.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:vibration/vibration.dart';
-import '../services/report_service.dart';
 import '../services/routing_service.dart';
 import '../services/firestore_service.dart';
+import '../services/location_service.dart';
 import '../services/navigation_controller.dart';
 import '../services/voice_assistant_service.dart';
 import '../services/destination_resolver.dart';
@@ -29,20 +29,17 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   final MapController _mapController = MapController();
   final FlutterTts _tts = FlutterTts();
-  final ReportService _reportService = ReportService();
+  final FirestoreService _firestoreService = FirestoreService();
   final TextEditingController _searchController = TextEditingController();
   final List<CampusLocation> _localBuildings = CampusLocation.mzuniBuildings;
-  static const LatLng _mzuniCenter = LatLng(-11.4653, 34.0199);
-  // Keeps the map from being panned or zoomed out past the Mzuzu University
-  // campus and its immediate surroundings, rather than the whole world.
-  static final LatLngBounds _mzuniBounds = LatLngBounds(
-    const LatLng(-11.475, 34.012),
-    const LatLng(-11.458, 34.028),
-  );
+  // Sourced from LocationService so the "am I on campus" check used for
+  // GPS detection and the map's cameraConstraint can never drift apart.
+  static const LatLng _mzuniCenter = LocationService.mzuniCenter;
+  static final LatLngBounds _mzuniBounds = LocationService.mzuniBounds;
   CampusLocation? _selectedLocation;
   bool _voiceEnabled = true;
   LatLng? _userLocation;
-  List<ReportModel> _locationReports = [];
+  List<Map<String, dynamic>> _locationReports = [];
   List<CampusLocation> _buildings = [];
   List<CampusLocation> _filtered = [];
 
@@ -133,7 +130,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     if (destination == null || _userLocation == null) return;
     _autoStartHandled = true;
     setState(() => _selectedLocation = destination);
-    _mapController.move(destination.coordinates, 16);
+    _moveCameraSafely(destination.coordinates, 16);
     _startNavigation(destination);
   }
 
@@ -146,7 +143,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       return;
     }
     setState(() => _selectedLocation = resolved.location);
-    _mapController.move(resolved.location.coordinates, 16);
+    _moveCameraSafely(resolved.location.coordinates, 16);
     await _voiceAssistant.speak(resolved.wasGeocoded
         ? 'Found ${resolved.location.name}. Starting navigation.'
         : 'Navigating to ${resolved.location.name}.');
@@ -160,12 +157,73 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     return '${(meters / 1000).toStringAsFixed(1)} kilometres';
   }
 
+  // Root cause of "MapCamera is no longer within the cameraConstraint":
+  // MapController.move() does NOT consult cameraConstraint - that's only
+  // enforced by FlutterMap.didUpdateWidget, which re-validates the camera
+  // every time MapOptions is rebuilt (and MapOptions is a new instance on
+  // every build() here, so this runs on almost every setState). If move()
+  // is ever called with a point flutter_map's ContainCamera constraint
+  // wouldn't allow, MapController.camera is left holding that out-of-bounds
+  // value, and the very next rebuild's `constrain(camera) == camera` check
+  // fails and throws.
+  //
+  // A plain `_mzuniBounds.contains(point)` check is NOT sufficient: contain
+  // constrains the projected pixel edges of the viewport, not the raw
+  // lat/lng, so the allowed center region shrinks as you zoom out (see
+  // ContainCamera.constrain in camera_constraint.dart). A point can pass a
+  // naive bounds check and still violate the real, zoom-dependent
+  // constraint - which is exactly what turning voice/search navigation
+  // toward an off-campus geocoded address, or clicking zoom-out near the
+  // edge of the map, can trigger.
+  //
+  // Fix: run every candidate camera through the *same* CameraConstraint the
+  // widget uses before calling move(), so whatever we hand to move() is
+  // already guaranteed valid. This also means we still pan toward the
+  // requested point (clamped to the nearest in-bounds camera) instead of
+  // just refusing to move, which matters for GPS auto-follow and the "My
+  // Location" button when the user is off-campus.
+  static final CameraConstraint _boundsConstraint =
+      CameraConstraint.contain(bounds: _mzuniBounds);
+
+  // MapController.camera throws until FlutterMap has completed its first
+  // build (see MapControllerImpl.camera), so guard against any callback -
+  // GPS, deep-linked initial destination, etc. - firing before that first
+  // frame renders. GPS can resolve before the first frame (e.g. an
+  // emulator's mocked location returns near-instantly), so a move that
+  // arrives too early is queued and replayed once onMapReady fires,
+  // instead of silently being dropped.
+  bool _mapReady = false;
+  LatLng? _pendingMovePoint;
+  double? _pendingMoveZoom;
+
+  void _onMapReady() {
+    _mapReady = true;
+    final point = _pendingMovePoint;
+    final zoom = _pendingMoveZoom;
+    if (point == null || zoom == null) return;
+    _pendingMovePoint = null;
+    _pendingMoveZoom = null;
+    _moveCameraSafely(point, zoom);
+  }
+
+  void _moveCameraSafely(LatLng point, double zoom) {
+    if (!_mapReady) {
+      _pendingMovePoint = point;
+      _pendingMoveZoom = zoom;
+      return;
+    }
+    final candidate = _mapController.camera.withPosition(center: point, zoom: zoom);
+    final constrained = _boundsConstraint.constrain(candidate);
+    if (constrained == null) return; // Zoomed out too far for bounds to be satisfiable at all.
+    _mapController.move(constrained.center, constrained.zoom);
+  }
+
   void _setupNavigation() {
     _navController.onPosition = (pos) {
       if (!mounted) return;
       setState(() => _userLocation = pos);
-      final zoom = _mapController.camera.zoom;
-      _mapController.move(pos, zoom < 17 ? 17 : zoom);
+      final zoom = _mapReady ? _mapController.camera.zoom : 17.0;
+      _moveCameraSafely(pos, zoom < 17 ? 17 : zoom);
     };
     _navController.onStepChanged = (step, distance) {
       if (!mounted) return;
@@ -257,9 +315,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   Future<void> _loadLocations() async {
     try {
-      final service = FirestoreService();
       final locations = <CampusLocation>[];
-      final fetched = await service.getLocations();
+      final fetched = await _firestoreService.getLocations();
       if (fetched.isNotEmpty) {
         locations.addAll(fetched);
       }
@@ -297,42 +354,46 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   Future<void> _getUserLocation() async {
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) _showError('Location services are disabled. Enable them in settings.');
-        return;
+      final result = await LocationService.getCurrentLocation();
+      if (!mounted) return;
+      setState(() => _userLocation = result.position);
+      if (result.isWithinMzuni) {
+        _moveCameraSafely(result.position, 17);
+        if (_voiceEnabled) await _tts.speak('You are at Mzuzu University.');
+        _showInfo('You are at Mzuzu University.');
+      } else {
+        _showError('Your current location is outside the Mzuzu University campus area.');
       }
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          if (mounted) _showError('Location permission denied.');
-          return;
-        }
-      }
-      if (permission == LocationPermission.deniedForever) {
-        if (mounted) _showError('Location permission permanently denied. Enable it in settings.');
-        return;
-      }
-      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      if (mounted) setState(() => _userLocation = LatLng(position.latitude, position.longitude));
       _maybeAutoStartInitialDestination();
+    } on LocationServiceException catch (e) {
+      if (!mounted) return;
+      _showError(e.message, onRetry: e.reason == LocationFailure.permissionDeniedForever ? null : _getUserLocation);
     } catch (e) {
       if (mounted) _showError('Failed to get location: $e');
     }
   }
 
-  void _showError(String message) {
+  void _showInfo(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: const Color(0xFFD35400)),
+      SnackBar(content: Text(message), backgroundColor: const Color(0xFF135C52)),
+    );
+  }
+
+  void _showError(String message, {VoidCallback? onRetry}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: const Color(0xFFD35400),
+        action: onRetry == null ? null : SnackBarAction(label: 'Retry', textColor: Colors.white, onPressed: onRetry),
+      ),
     );
   }
 
   Future<void> _onLocationTapped(CampusLocation location) async {
     setState(() => _selectedLocation = location);
-    _mapController.move(location.coordinates, 18);
-    // Load reports for this location from database
-    final reports = await _reportService.getReportsByLocation(location.name);
+    _moveCameraSafely(location.coordinates, 18);
+    // Load reports for this location from Firestore
+    final reports = await _firestoreService.getReportsByLocation(location.name);
     setState(() => _locationReports = reports);
     if (_voiceEnabled) await _speakLocation(location);
   }
@@ -348,12 +409,13 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       type: LocationType.facility,
       accessibilityInfo:
           'Exact coordinates: ${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)}.',
+      isAccessible: false,
     );
     setState(() {
       _selectedLocation = pin;
       _locationReports = [];
     });
-    _mapController.move(point, 18);
+    _moveCameraSafely(point, 18);
     if (_voiceEnabled) {
       await _tts.speak('Pin dropped. Tap Navigate to walk there, or Read Aloud for the coordinates.');
     }
@@ -432,6 +494,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
               minZoom: 14,
               maxZoom: 19,
               cameraConstraint: CameraConstraint.contain(bounds: _mzuniBounds),
+              onMapReady: _onMapReady,
               onTap: (_, __) {
                 setState(() {
                   _selectedLocation = null;
@@ -671,20 +734,20 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   Widget _buildControls() {
     return Column(children: [
-      _btn(Icons.school, () => _mapController.move(_mzuniCenter, 16)),
+      _btn(Icons.school, () => _moveCameraSafely(_mzuniCenter, 16)),
       const SizedBox(height: 8),
       _btn(Icons.my_location, () {
         if (_userLocation != null) {
-          _mapController.move(_userLocation!, 18);
+          _moveCameraSafely(_userLocation!, 18);
         } else {
           _getUserLocation();
         }
       }),
       const SizedBox(height: 8),
-      _btn(Icons.add, () => _mapController.move(
+      _btn(Icons.add, () => _moveCameraSafely(
           _mapController.camera.center, _mapController.camera.zoom + 1)),
       const SizedBox(height: 8),
-      _btn(Icons.remove, () => _mapController.move(
+      _btn(Icons.remove, () => _moveCameraSafely(
           _mapController.camera.center, _mapController.camera.zoom - 1)),
       const SizedBox(height: 8),
       GestureDetector(
@@ -794,14 +857,18 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: const Color(0xFF2ECC71).withOpacity(0.1),
+            color: (loc.isAccessible ? const Color(0xFF2ECC71) : const Color(0xFFD35400)).withOpacity(0.1),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFF2ECC71).withOpacity(0.3)),
+            border: Border.all(color: (loc.isAccessible ? const Color(0xFF2ECC71) : const Color(0xFFD35400)).withOpacity(0.3)),
           ),
           child: Row(children: [
-            const Icon(Icons.accessible, color: Color(0xFF2ECC71), size: 18),
+            Icon(loc.isAccessible ? Icons.accessible : Icons.accessible_forward,
+                color: loc.isAccessible ? const Color(0xFF2ECC71) : const Color(0xFFD35400), size: 18),
             const SizedBox(width: 8),
-            Expanded(child: Text(loc.accessibilityInfo, style: const TextStyle(fontSize: 12))),
+            Expanded(child: Text(
+              '${loc.isAccessible ? 'Accessible' : 'Limited accessibility'}. ${loc.accessibilityInfo}',
+              style: const TextStyle(fontSize: 12),
+            )),
           ]),
         ),
 

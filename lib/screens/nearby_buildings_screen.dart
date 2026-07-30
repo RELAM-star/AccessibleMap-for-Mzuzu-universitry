@@ -5,6 +5,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/campus_location.dart';
+import '../services/firestore_service.dart';
 import '../services/routing_service.dart';
 import '../services/navigation_controller.dart';
 import '../widgets/navigation_banner.dart';
@@ -18,7 +19,8 @@ class NearbyBuildingsScreen extends StatefulWidget {
 
 class _NearbyBuildingsScreenState extends State<NearbyBuildingsScreen> {
   final FlutterTts _tts = FlutterTts();
-  final List<CampusLocation> _buildings = CampusLocation.mzuniBuildings;
+  final FirestoreService _firestoreService = FirestoreService();
+  List<CampusLocation> _buildings = CampusLocation.mzuniBuildings;
   List<Map<String, dynamic>> _sorted = [];
   LatLng? _userLocation;
   bool _voiceEnabled = true;
@@ -34,8 +36,20 @@ class _NearbyBuildingsScreenState extends State<NearbyBuildingsScreen> {
   void initState() {
     super.initState();
     _setupTts();
-    _loadNearby();
+    _loadBuildingsThenNearby();
     _setupNavigation();
+  }
+
+  Future<void> _loadBuildingsThenNearby() async {
+    try {
+      final fetched = await _firestoreService.getLocations();
+      if (fetched.isNotEmpty && mounted) {
+        setState(() => _buildings = fetched);
+      }
+    } catch (_) {
+      // Keep the hardcoded fallback list.
+    }
+    await _loadNearby();
   }
 
   String _formatSpokenDistance(double meters) {
@@ -186,7 +200,8 @@ class _NearbyBuildingsScreenState extends State<NearbyBuildingsScreen> {
       b.coordinates.longitude,
     );
     final dir = _direction(_userLocation!, b.coordinates);
-    await _tts.speak('${b.name}. ${b.description}. ${_distanceText(distance)} to your $dir. ${b.accessibilityInfo}');
+    final accessibility = b.isAccessible ? 'Accessible.' : 'Limited accessibility.';
+    await _tts.speak('${b.name}. ${b.description}. ${_distanceText(distance)} to your $dir. $accessibility ${b.accessibilityInfo}');
   }
 
   @override
@@ -274,7 +289,13 @@ class _NearbyBuildingsScreenState extends State<NearbyBuildingsScreen> {
                               ),
                               const SizedBox(width: 14),
                               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text(b.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                                Row(children: [
+                                  Flexible(child: Text(b.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14))),
+                                  if (b.isAccessible) ...[
+                                    const SizedBox(width: 6),
+                                    const Icon(Icons.accessible, color: Color(0xFF2ECC71), size: 16),
+                                  ],
+                                ]),
                                 Text('${_distanceText(distance)} · $dir', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                               ])),
                               GestureDetector(

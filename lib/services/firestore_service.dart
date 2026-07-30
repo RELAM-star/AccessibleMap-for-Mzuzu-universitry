@@ -40,46 +40,63 @@ class FirestoreService {
     return _reports.orderBy('createdAt', descending: true).snapshots();
   }
 
+  Future<List<Map<String, dynamic>>> getReportsByLocation(
+      String locationName) async {
+    final snapshot =
+        await _reports.where('location', isEqualTo: locationName).get();
+    final reports = snapshot.docs.map((doc) => doc.data()).toList();
+    reports.sort((a, b) {
+      final aTime = a['createdAt'] as Timestamp?;
+      final bTime = b['createdAt'] as Timestamp?;
+      if (aTime == null || bTime == null) return 0;
+      return bTime.compareTo(aTime);
+    });
+    return reports;
+  }
+
+  CampusLocation _locationFromDoc(
+      String docId, Map<String, dynamic> data) {
+    return CampusLocation(
+      id: data['id'] ?? docId,
+      name: data['name'] ?? '',
+      description: data['description'] ?? '',
+      coordinates: LatLng(
+        (data['lat'] as num?)?.toDouble() ?? 0.0,
+        (data['lng'] as num?)?.toDouble() ?? 0.0,
+      ),
+      type: LocationType.values.firstWhere(
+        (e) => e.name == (data['type'] ?? 'facility'),
+        orElse: () => LocationType.facility,
+      ),
+      accessibilityInfo: data['accessibilityInfo'] ?? '',
+      isAccessible: data['isAccessible'] as bool? ?? true,
+    );
+  }
+
   Future<List<CampusLocation>> getLocations() async {
     final snapshot = await _locations.get();
-    return snapshot.docs.map<CampusLocation>((doc) {
-      final data = doc.data();
-      return CampusLocation(
-        id: data['id'] ?? doc.id,
-        name: data['name'] ?? '',
-        description: data['description'] ?? '',
-        coordinates: LatLng(
-          (data['lat'] as num?)?.toDouble() ?? 0.0,
-          (data['lng'] as num?)?.toDouble() ?? 0.0,
-        ),
-        type: LocationType.values.firstWhere(
-          (e) => e.name == (data['type'] ?? 'facility'),
-          orElse: () => LocationType.facility,
-        ),
-        accessibilityInfo: data['accessibilityInfo'] ?? '',
-      );
-    }).toList();
+    return snapshot.docs
+        .map((doc) => _locationFromDoc(doc.id, doc.data()))
+        .toList();
   }
 
   Stream<List<CampusLocation>> watchLocations() {
     return _locations.snapshots().map((snapshot) {
-      return snapshot.docs.map<CampusLocation>((doc) {
-        final data = doc.data();
-        return CampusLocation(
-          id: data['id'] ?? doc.id,
-          name: data['name'] ?? '',
-          description: data['description'] ?? '',
-          coordinates: LatLng(
-            (data['lat'] as num?)?.toDouble() ?? 0.0,
-            (data['lng'] as num?)?.toDouble() ?? 0.0,
-          ),
-          type: LocationType.values.firstWhere(
-            (e) => e.name == (data['type'] ?? 'facility'),
-            orElse: () => LocationType.facility,
-          ),
-          accessibilityInfo: data['accessibilityInfo'] ?? '',
-        );
-      }).toList();
+      return snapshot.docs
+          .map((doc) => _locationFromDoc(doc.id, doc.data()))
+          .toList();
     });
+  }
+
+  /// Locations for voice/search matching: tries Firestore first and falls
+  /// back to the curated offline list so destination matching still works
+  /// without a network connection.
+  Future<List<CampusLocation>> getLocationsOrFallback() async {
+    try {
+      final fetched = await getLocations();
+      return fetched.isNotEmpty ? fetched : CampusLocation.mzuniBuildings;
+    } catch (_) {
+      return CampusLocation.mzuniBuildings;
+    }
   }
 }
