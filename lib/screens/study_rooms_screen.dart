@@ -164,7 +164,11 @@ class _StudyRoomsScreenState extends State<StudyRoomsScreen> {
             icon: Icon(_voiceEnabled ? Icons.volume_up : Icons.volume_off),
             onPressed: () {
               setState(() => _voiceEnabled = !_voiceEnabled);
-              if (_voiceEnabled) _tts.speak('Voice on'); else _tts.stop();
+              if (_voiceEnabled) {
+                _tts.speak('Voice on');
+              } else {
+                _tts.stop();
+              }
             },
           )
         ],

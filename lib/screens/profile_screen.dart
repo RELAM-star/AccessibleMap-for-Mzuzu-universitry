@@ -265,7 +265,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
           Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 11)),
         ])),
-        Switch(value: value, onChanged: onChanged, activeColor: const Color(0xFF135C52)),
+        Switch(value: value, onChanged: onChanged, activeThumbColor: const Color(0xFF135C52)),
       ]),
     );
   }

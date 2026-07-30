@@ -18,11 +18,24 @@ class DestinationResolver {
     for (final b in CampusLocation.mzuniBuildings) {
       if (q.contains(b.name.toLowerCase())) return b;
     }
+
+    // Fall back to keyword matching, scored by how much of the building's
+    // name was actually said rather than the first partial match. Several
+    // buildings share generic words (e.g. "main" appears in the
+    // Administration Block, Library, Bus Stop and Cafeteria names), so
+    // picking the first match in list order picks the wrong building
+    // whenever the spoken phrase includes one of those shared words.
+    CampusLocation? best;
+    int bestScore = 0;
     for (final b in CampusLocation.mzuniBuildings) {
       final keywords = b.name.toLowerCase().split(RegExp(r'\s+')).where((w) => w.length > 3);
-      if (keywords.any((w) => q.contains(w))) return b;
+      final score = keywords.where((w) => q.contains(w)).fold<int>(0, (sum, w) => sum + w.length);
+      if (score > bestScore) {
+        bestScore = score;
+        best = b;
+      }
     }
-    return null;
+    return best;
   }
 
   static Future<ResolvedDestination?> resolve(String spoken) async {

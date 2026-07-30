@@ -209,7 +209,11 @@ class _NearbyBuildingsScreenState extends State<NearbyBuildingsScreen> {
             icon: Icon(_voiceEnabled ? Icons.volume_up : Icons.volume_off),
             onPressed: () {
               setState(() => _voiceEnabled = !_voiceEnabled);
-              if (_voiceEnabled) _tts.speak('Voice on'); else _tts.stop();
+              if (_voiceEnabled) {
+                _tts.speak('Voice on');
+              } else {
+                _tts.stop();
+              }
             },
           )
         ],
@@ -266,7 +270,7 @@ class _NearbyBuildingsScreenState extends State<NearbyBuildingsScreen> {
                                   color: const Color(0xFF135C52).withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(14),
                                 ),
-                                child: Icon(Icons.location_on, color: const Color(0xFF135C52), size: 24),
+                                child: const Icon(Icons.location_on, color: Color(0xFF135C52), size: 24),
                               ),
                               const SizedBox(width: 14),
                               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

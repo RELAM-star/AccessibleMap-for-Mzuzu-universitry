@@ -72,20 +72,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   final List<Map<String, dynamic>> _categories = [
-    {'title': 'Campus Map', 'color': Color(0xFF57CC99), 'ready': true},
-    {'title': 'Toilets', 'color': Color.fromARGB(255, 64, 68, 88), 'ready': true},
-    {'title': 'Report', 'color': Color(0xFFF4A261), 'ready': true},
-    {'title': 'Nearby Buildings', 'color': Color(0xFFE76F6F), 'ready': false},
-    {'title': 'Rooms', 'color': Color(0xFF74C0E8), 'ready': false},
+    {'title': 'Campus Map', 'color': const Color(0xFF57CC99), 'ready': true},
+    {'title': 'Toilets', 'color': const Color.fromARGB(255, 64, 68, 88), 'ready': true},
+    {'title': 'Report', 'color': const Color(0xFFF4A261), 'ready': true},
+    {'title': 'Nearby Buildings', 'color': const Color(0xFFE76F6F), 'ready': false},
+    {'title': 'Rooms', 'color': const Color(0xFF74C0E8), 'ready': false},
   ];
 
   final List<Map<String, dynamic>> _features = [
-    {'title': 'Campus Map',         'icon': Icons.map,            'color': Color(0xFFB8C9F5), 'ready': true},
-    {'title': 'Accessible Toilets', 'icon': Icons.wc,             'color': Color(0xFF57CC99), 'ready': true},
-    {'title': 'Report Problem',      'icon': Icons.report_problem, 'color': Color(0xFFF4A261), 'ready': true},
-    {'title': 'Nearby Buildings',       'icon': Icons.location_city, 'color': Color(0xFFE76F6F), 'ready': false},
-    {'title': 'Study Rooms',        'icon': Icons.menu_book,      'color': Color(0xFF74C0E8), 'ready': false},
-    {'title': 'My Profile',         'icon': Icons.person,         'color': Color(0xFFD4A8F0), 'ready': true},
+    {'title': 'Campus Map',         'icon': Icons.map,            'color': const Color(0xFFB8C9F5), 'ready': true},
+    {'title': 'Accessible Toilets', 'icon': Icons.wc,             'color': const Color(0xFF57CC99), 'ready': true},
+    {'title': 'Report Problem',      'icon': Icons.report_problem, 'color': const Color(0xFFF4A261), 'ready': true},
+    {'title': 'Nearby Buildings',       'icon': Icons.location_city, 'color': const Color(0xFFE76F6F), 'ready': false},
+    {'title': 'Study Rooms',        'icon': Icons.menu_book,      'color': const Color(0xFF74C0E8), 'ready': false},
+    {'title': 'My Profile',         'icon': Icons.person,         'color': const Color(0xFFD4A8F0), 'ready': true},
   ];
 
   Future<void> _navigateToSpokenDestination(String query) async {

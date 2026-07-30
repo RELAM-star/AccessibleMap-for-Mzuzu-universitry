@@ -29,12 +29,12 @@ class _ReportScreenState extends State<ReportScreen> {
   String _crowdedSpot = '';
 
   final List<Map<String, dynamic>> _reportTypes = [
-    {'type': 'Blocked Path',      'icon': Icons.block,              'color': Color(0xFFE74C3C), 'keyword': ['blocked', 'block', 'path', 'route', 'closed']},
-    {'type': 'Construction Area', 'icon': Icons.construction,       'color': Color(0xFFF39C12), 'keyword': ['construction', 'building', 'works', 'digging']},
-    {'type': 'Crowded Location',  'icon': Icons.people,             'color': Color(0xFF7B8FF7), 'keyword': ['crowd', 'crowded', 'people', 'busy', 'full']},
-    {'type': 'Broken Ramp',       'icon': Icons.accessible_forward, 'color': Color(0xFFE67E22), 'keyword': ['ramp', 'broken', 'damaged', 'wheelchair', 'steps']},
-    {'type': 'Poor Lighting',     'icon': Icons.lightbulb_outline,  'color': Color(0xFF57CC99), 'keyword': ['dark', 'light', 'lighting', 'dim', 'night']},
-    {'type': 'Other Hazard',      'icon': Icons.warning_amber,      'color': Color(0xFFB57BEE), 'keyword': ['other', 'hazard', 'danger', 'problem', 'issue']},
+    {'type': 'Blocked Path',      'icon': Icons.block,              'color': const Color(0xFFE74C3C), 'keyword': ['blocked', 'block', 'path', 'route', 'closed']},
+    {'type': 'Construction Area', 'icon': Icons.construction,       'color': const Color(0xFFF39C12), 'keyword': ['construction', 'building', 'works', 'digging']},
+    {'type': 'Crowded Location',  'icon': Icons.people,             'color': const Color(0xFF7B8FF7), 'keyword': ['crowd', 'crowded', 'people', 'busy', 'full']},
+    {'type': 'Broken Ramp',       'icon': Icons.accessible_forward, 'color': const Color(0xFFE67E22), 'keyword': ['ramp', 'broken', 'damaged', 'wheelchair', 'steps']},
+    {'type': 'Poor Lighting',     'icon': Icons.lightbulb_outline,  'color': const Color(0xFF57CC99), 'keyword': ['dark', 'light', 'lighting', 'dim', 'night']},
+    {'type': 'Other Hazard',      'icon': Icons.warning_amber,      'color': const Color(0xFFB57BEE), 'keyword': ['other', 'hazard', 'danger', 'problem', 'issue']},
   ];
 
   final Map<String, List<String>> _locationKeywords = {
@@ -204,7 +204,7 @@ class _ReportScreenState extends State<ReportScreen> {
       await _speak('There was an error submitting your report. Please try again.');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to submit report: $e'), backgroundColor: const Color(0xFFE74C3C)),
+          SnackBar(content: Text('Failed to submit report: $e'), backgroundColor: const Color(0xFFD35400)),
         );
       }
       setState(() { _isSubmitting = false; _step = 4; });
@@ -338,7 +338,7 @@ class _ReportScreenState extends State<ReportScreen> {
               decoration: BoxDecoration(
                   color: const Color(0xFF135C52).withOpacity(0.08),
                   borderRadius: BorderRadius.circular(30)),
-              child: Row(mainAxisSize: MainAxisSize.min, children: const [
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.graphic_eq, color: Color(0xFF135C52), size: 18),
                 SizedBox(width: 8),
                 Text('Speaking...',
@@ -354,7 +354,7 @@ class _ReportScreenState extends State<ReportScreen> {
               decoration: BoxDecoration(
                   color: const Color(0xFFE74C3C).withOpacity(0.08),
                   borderRadius: BorderRadius.circular(30)),
-              child: Row(mainAxisSize: MainAxisSize.min, children: const [
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.mic, color: Color(0xFFE74C3C), size: 18),
                 SizedBox(width: 8),
                 Text('Listening...',
@@ -386,8 +386,9 @@ class _ReportScreenState extends State<ReportScreen> {
           if (!_isListening && !_isSpeaking) ...[
             GestureDetector(
               onTap: () {
-                if (_step == 0) _askProblemType();
-                else if (_step == 1) _askProblemType();
+                if (_step == 0) {
+                  _askProblemType();
+                } else if (_step == 1) _askProblemType();
                 else if (_step == 2) _askLocation();
                 else if (_step == 3) _askCrowdedSpot();
                 else if (_step == 4) _askConfirm();

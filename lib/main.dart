@@ -9,7 +9,7 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  runApp(AccessMapApp());
+  runApp(const AccessMapApp());
 }
 
 class AccessMapApp extends StatelessWidget {
@@ -21,7 +21,7 @@ class AccessMapApp extends StatelessWidget {
       title: 'AccessMap Mzuni',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: SplashScreen(),
+      home: const SplashScreen(),
     );
   }
 }

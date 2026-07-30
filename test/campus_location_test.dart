@@ -8,7 +8,7 @@ void main() {
       id: 'test',
       name: 'Test Building',
       description: 'A test building',
-      coordinates: LatLng(-11.4648, 34.0195),
+      coordinates: const LatLng(-11.4648, 34.0195),
       type: LocationType.academic,
       accessibilityInfo: 'Ramp access',
     );

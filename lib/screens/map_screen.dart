@@ -33,13 +33,18 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   final TextEditingController _searchController = TextEditingController();
   final List<CampusLocation> _localBuildings = CampusLocation.mzuniBuildings;
   static const LatLng _mzuniCenter = LatLng(-11.4653, 34.0199);
+  // Keeps the map from being panned or zoomed out past the Mzuzu University
+  // campus and its immediate surroundings, rather than the whole world.
+  static final LatLngBounds _mzuniBounds = LatLngBounds(
+    const LatLng(-11.475, 34.012),
+    const LatLng(-11.458, 34.028),
+  );
   CampusLocation? _selectedLocation;
   bool _voiceEnabled = true;
   LatLng? _userLocation;
   List<ReportModel> _locationReports = [];
   List<CampusLocation> _buildings = [];
   List<CampusLocation> _filtered = [];
-  bool _isLoadingLocations = true;
 
   final NavigationController _navController = NavigationController();
   final VoiceAssistantService _voiceAssistant = VoiceAssistantService();
@@ -47,6 +52,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   bool _isNavigating = false;
   bool _autoStartHandled = false;
   bool _obstacleAlertsEnabled = false;
+  // Whether obstacle alerts were auto-started by navigation (as opposed to
+  // the manual toggle), so ending navigation only turns them off if it
+  // was the one that turned them on.
+  bool _obstacleAlertsStartedByNavigation = false;
   CampusLocation? _navDestination;
   RouteStep? _navStep;
   double? _navDistanceToStep;
@@ -101,6 +110,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   Future<void> _toggleObstacleAlerts() async {
     if (_obstacleAlertsEnabled) {
+      _obstacleAlertsStartedByNavigation = false;
       await _obstacleService.stop();
       if (!mounted) return;
       setState(() => _obstacleAlertsEnabled = false);
@@ -184,6 +194,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         _navStep = null;
         _navDistanceToStep = null;
       });
+      await _stopObstacleAlertsForNavigation();
     };
     _navController.onOffRoute = () async {
       await _tts.speak('You have gone off route. Recalculating.');
@@ -193,6 +204,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       await _tts.speak(message);
       if (!mounted) return;
       setState(() => _isNavigating = false);
+      await _stopObstacleAlertsForNavigation();
     };
   }
 
@@ -206,7 +218,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     final started = await _navController.start(_userLocation!, loc.coordinates);
     if (!mounted) return;
     setState(() => _isNavigating = started);
-    if (!started) setState(() => _navDestination = null);
+    if (!started) {
+      setState(() => _navDestination = null);
+      return;
+    }
+    await _startObstacleAlertsForNavigation();
   }
 
   void _stopNavigation() {
@@ -218,6 +234,25 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _navDistanceToStep = null;
     });
     _tts.speak('Navigation stopped.');
+    _stopObstacleAlertsForNavigation();
+  }
+
+  Future<void> _startObstacleAlertsForNavigation() async {
+    if (_obstacleAlertsEnabled) return;
+    final started = await _obstacleService.start();
+    if (!mounted) return;
+    if (started) {
+      _obstacleAlertsStartedByNavigation = true;
+      setState(() => _obstacleAlertsEnabled = true);
+    }
+  }
+
+  Future<void> _stopObstacleAlertsForNavigation() async {
+    if (!_obstacleAlertsStartedByNavigation) return;
+    _obstacleAlertsStartedByNavigation = false;
+    await _obstacleService.stop();
+    if (!mounted) return;
+    setState(() => _obstacleAlertsEnabled = false);
   }
 
   Future<void> _loadLocations() async {
@@ -232,7 +267,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         setState(() {
           _buildings = locations.isNotEmpty ? locations : _localBuildings;
           _filtered = List.from(_buildings);
-          _isLoadingLocations = false;
         });
       }
     } catch (_) {
@@ -240,7 +274,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         setState(() {
           _buildings = _localBuildings;
           _filtered = List.from(_buildings);
-          _isLoadingLocations = false;
         });
       }
     }
@@ -291,7 +324,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: const Color(0xFFE74C3C)),
+      SnackBar(content: Text(message), backgroundColor: const Color(0xFFD35400)),
     );
   }
 
@@ -396,6 +429,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             options: MapOptions(
               initialCenter: _mzuniCenter,
               initialZoom: 16,
+              minZoom: 14,
+              maxZoom: 19,
+              cameraConstraint: CameraConstraint.contain(bounds: _mzuniBounds),
               onTap: (_, __) {
                 setState(() {
                   _selectedLocation = null;
@@ -594,10 +630,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8)]),
           child: TextField(
             controller: _searchController,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               hintText: 'Search buildings...',
-              hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
-              prefixIcon: const Icon(Icons.search, color: Color(0xFF1A6EBF), size: 20),
+              hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
+              prefixIcon: Icon(Icons.search, color: Color(0xFF1A6EBF), size: 20),
               border: InputBorder.none,
               isDense: true,
               contentPadding: EdgeInsets.zero,
@@ -775,18 +811,18 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFFE74C3C).withOpacity(0.08),
+              color: const Color(0xFFD35400).withOpacity(0.08),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFE74C3C).withOpacity(0.3)),
+              border: Border.all(color: const Color(0xFFD35400).withOpacity(0.3)),
             ),
             child: Row(children: [
-              const Icon(Icons.warning_amber, color: Color(0xFFE74C3C), size: 18),
+              const Icon(Icons.warning_amber, color: Color(0xFFD35400), size: 18),
               const SizedBox(width: 8),
               Text(
                 '${_locationReports.length} report${_locationReports.length > 1 ? 's' : ''} submitted here',
                 style: const TextStyle(
                   fontSize: 12,
-                  color: Color(0xFFE74C3C),
+                  color: Color(0xFFD35400),
                   fontWeight: FontWeight.w600,
                 ),
               ),

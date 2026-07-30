@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_object_detection/google_mlkit_object_detection.dart';
 
@@ -106,11 +106,20 @@ class ObstacleDetectionService {
     final detector = _detector;
     if (controller == null || detector == null) return;
     final inputImage = _toInputImage(image, controller.description, controller.value.deviceOrientation);
-    if (inputImage == null) return;
+    if (inputImage == null) {
+      debugPrint('ObstacleDetection: dropped frame (could not build InputImage) '
+          'format=${image.format.raw} planes=${image.planes.length} '
+          'deviceOrientation=${controller.value.deviceOrientation}');
+      return;
+    }
     try {
       final objects = await detector.processImage(inputImage);
+      debugPrint('ObstacleDetection: got ${objects.length} object(s) '
+          'frame=${image.width}x${image.height}'
+          '${objects.isEmpty ? '' : ' ratios=${objects.map((o) => ((o.boundingBox.width * o.boundingBox.height) / (image.width * image.height)).toStringAsFixed(2)).join(',')}'}');
       _evaluate(objects, image.width, image.height);
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('ObstacleDetection: processImage threw: $e\n$st');
       // Skip a bad frame rather than taking down the whole stream.
     }
   }

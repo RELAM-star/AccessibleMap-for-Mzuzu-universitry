@@ -39,7 +39,7 @@ class AccessibleToilet {
       building: 'Main Administration Block',
       floor: 'Ground Floor',
       directions: 'Enter the main admin block through the front ramp. Turn left at the reception desk. The accessible toilet is the third door on your right. It has a blue accessibility sign on the door.',
-      coordinates: LatLng(-11.4648, 34.0194),
+      coordinates: const LatLng(-11.4648, 34.0194),
       hasGrabRails: true,
       hasAudioCue: false,
       isGenderNeutral: true,
@@ -50,7 +50,7 @@ class AccessibleToilet {
       building: 'Mzuni Main Library',
       floor: 'Ground Floor',
       directions: 'Enter the library through the east entrance ramp. Walk straight past the front desk. The accessible toilet is at the end of the corridor on your left, before the study rooms.',
-      coordinates: LatLng(-11.4655, 34.0201),
+      coordinates: const LatLng(-11.4655, 34.0201),
       hasGrabRails: true,
       hasAudioCue: true,
       isGenderNeutral: true,
@@ -61,7 +61,7 @@ class AccessibleToilet {
       building: 'Student Centre',
       floor: 'Ground Floor',
       directions: 'Enter the student centre through the main wide entrance. Walk past the noticeboard. The accessible toilet is on your right side, next to the cafeteria entrance. Look for the large blue door.',
-      coordinates: LatLng(-11.4658, 34.0206),
+      coordinates: const LatLng(-11.4658, 34.0206),
       hasGrabRails: true,
       hasAudioCue: false,
       isGenderNeutral: true,
@@ -72,7 +72,7 @@ class AccessibleToilet {
       building: 'Faculty of Humanities',
       floor: 'Ground Floor',
       directions: 'Enter the Faculty of Humanities through the north ramp entrance. Turn right immediately after entering. The accessible toilet is the second door on your left down the short corridor.',
-      coordinates: LatLng(-11.4660, 34.0189),
+      coordinates: const LatLng(-11.4660, 34.0189),
       hasGrabRails: true,
       hasAudioCue: false,
       isGenderNeutral: false,
@@ -83,7 +83,7 @@ class AccessibleToilet {
       building: 'University Health Centre',
       floor: 'Ground Floor',
       directions: 'Enter the health centre through the main door. Speak to the receptionist and they will guide you. The accessible toilet is directly behind the waiting area on the left wall.',
-      coordinates: LatLng(-11.4650, 34.0174),
+      coordinates: const LatLng(-11.4650, 34.0174),
       hasGrabRails: true,
       hasAudioCue: false,
       isGenderNeutral: true,
@@ -94,7 +94,7 @@ class AccessibleToilet {
       building: "Chancellor's Hostel",
       floor: 'Ground Floor',
       directions: "Enter Chancellor's Hostel through the main entrance. The accessible toilet is immediately to your left after the entrance, before the staircase. It is clearly marked.",
-      coordinates: LatLng(-11.4638, 34.0187),
+      coordinates: const LatLng(-11.4638, 34.0187),
       hasGrabRails: true,
       hasAudioCue: false,
       isGenderNeutral: false,
@@ -105,7 +105,7 @@ class AccessibleToilet {
       building: 'Female Hostel',
       floor: 'Ground Floor',
       directions: 'Enter the female hostel through the ramp at the front entrance. Turn right and walk about ten steps. The accessible toilet is the first door on your right with a blue handle.',
-      coordinates: LatLng(-11.4640, 34.0204),
+      coordinates: const LatLng(-11.4640, 34.0204),
       hasGrabRails: true,
       hasAudioCue: false,
       isGenderNeutral: false,
@@ -116,7 +116,7 @@ class AccessibleToilet {
       building: 'ICT Centre',
       floor: 'Ground Floor',
       directions: 'Enter the ICT Centre through the ground floor entrance. Walk past the reception. The accessible toilet is at the back left corner of the ground floor, near the printer room.',
-      coordinates: LatLng(-11.4648, 34.0207),
+      coordinates: const LatLng(-11.4648, 34.0207),
       hasGrabRails: false,
       hasAudioCue: false,
       isGenderNeutral: true,
@@ -328,7 +328,11 @@ class _ToiletsScreenState extends State<ToiletsScreen> {
             icon: Icon(_voiceEnabled ? Icons.volume_up : Icons.volume_off),
             onPressed: () {
               setState(() => _voiceEnabled = !_voiceEnabled);
-              if (_voiceEnabled) _speak('Voice on'); else _tts.stop();
+              if (_voiceEnabled) {
+                _speak('Voice on');
+              } else {
+                _tts.stop();
+              }
             },
           ),
         ],
@@ -504,7 +508,7 @@ class _ToiletsScreenState extends State<ToiletsScreen> {
   Widget _buildMap() {
     return FlutterMap(
       mapController: _mapController,
-      options: MapOptions(initialCenter: _mzuniCenter, initialZoom: 16),
+      options: const MapOptions(initialCenter: _mzuniCenter, initialZoom: 16),
       children: [
         TileLayer(
           urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
